@@ -112,9 +112,9 @@ def apply_RDP(data):
 def normalize(data, is_abs=False):
 
     if not is_abs:
-        min_x, max_x, min_y, max_y = get_relative_bounds_customized(data)
+        min_x, min_y, max_x, max_y = get_relative_bounds_customized(data)
     else:
-        min_x, max_x, min_y, max_y = get_absolute_bounds_customized(data)
+        min_x, min_y, max_x, max_y = get_absolute_bounds_customized(data)
     max_dim = max([max_x - min_x, max_y - min_y, 1])
     data = data.astype(np.float32)
     data[:, :2] /= max_dim

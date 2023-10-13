@@ -2,19 +2,17 @@ import argparse
 import json
 import os
 import random
-
 import imageio
-from skimage import color
-from collections import defaultdict
-from tqdm import tqdm
+import numpy as np
 import skimage.transform as sk_transform
 import pycocotools.mask as coco_mask_utils
-import numpy as np
 
+from tqdm import tqdm
 from generate_scene import *
 from utils import hparams, coco, tfrecord, sketch
+from bbox_extractor import *
     
-
+"""
 def scale_image(image, image_size):
     scaled = sk_transform.resize(image, (image_size, image_size))
     if scaled.shape[-1] == 3:
@@ -23,7 +21,7 @@ def scale_image(image, image_size):
         scaled = np.reshape(scaled,
                             (image_size, image_size, 1))
     return scaled
-    
+"""   
     
 def scale_bboxes(sketch_bboxes, image_size, margin):
     
@@ -59,11 +57,10 @@ def default_hparams():
         image_size=224,
         min_object_size=0.05,
         min_objects_per_image=3,
-        max_objects_per_image=20,
+        max_objects_per_image=5,
         max_objects_per_category=3,
-        min_category_per_image=2,
+        min_category_per_image=3,
         overlap_ratio=0.4,
-        mask_size=64,
         image_margin=20,
         include_image_obj=False,
         excluded_meta_file='qd_coco_files/coco_mats_objs_sketchables_v2.json',
@@ -71,89 +68,80 @@ def default_hparams():
     return hps
 
 
-def load_all_data_and_save_in_chunks(n_chunks, chunk_size, image_ids,
-                                     image_dir, id_to_filename, id_to_size, id_to_objects, 
+def load_all_data_and_save_in_chunks(image_ids, image_dirs, id_to_size, id_to_objects, 
                                      base_filepath, class_files, set_type, hps, c_meta, qd_meta):
-                                     
-    
                                
     image_counter = 0
-    for cur_chunk in range(0, n_chunks):
-        start_id = cur_chunk * chunk_size
-        end_id = cur_chunk * chunk_size + chunk_size if cur_chunk + chunk_size < len(image_ids) else len(image_ids)
 
-        for i in tqdm(range(start_id, end_id)):
-            img_id = image_ids[i]                
+    for i in tqdm(range(0, len(image_ids))):
+        img_id = image_ids[i]                
             
+        save_path = os.path.join(base_filepath, str(img_id))
+        
+        prefix = "0" * (12 - len(str(img_id)))
+        filename = prefix + str(img_id) + ".jpg"
+        image_dir = image_dirs[i]
+        img = imageio.imread(os.path.join(image_dir, filename))
+        size = id_to_size[img_id]
+        img_w, img_h = size
+        objs = id_to_objects[img_id]
+        img, c_objs, c_boxes, c_boxes_orig = coco.preprocess(img, size, objs, hps, c_meta)
+                
+        if img is not None:
             save_path = os.path.join(base_filepath, str(img_id))
-            """
-            if os.path.isdir(save_path) and os.path.isfile(os.path.join(save_path, "data_info.json")):
-                continue
-            """
-            img = imageio.imread(os.path.join(image_dir, id_to_filename[img_id]))
-            size = id_to_size[img_id]
-            img_w, img_h = size
-            objs = id_to_objects[img_id]
-            img, c_objs, c_boxes, c_boxes_orig = coco.preprocess(img, size, objs, hps, c_meta)
                 
-            if img is not None:
+            if not os.path.isdir(save_path):
+                os.mkdir(save_path)
                 
-                save_path = os.path.join(base_filepath, str(img_id))
+            scene_img = {"data": {"image_id": img_id, "objects": []}, "label": 1}
+            coco_classes = [c_meta['obj_idx_to_name'][c] for c in c_objs]
+            qd_class_ids, sample_ids = [], []
+            raster_sketches = np.zeros((len(coco_classes), hps['image_size'], hps['image_size'], 1))
                 
-                if not os.path.isdir(save_path):
-                    os.mkdir(save_path)
-                
-                scene_img = {"data": {"image_id": img_id, "objects": []}, "label": 1}
-                coco_classes = [c_meta['obj_idx_to_name'][c] for c in c_objs]
-                qd_class_ids, sample_ids = [], []
-                raster_sketches = np.zeros((len(coco_classes), hps['image_size'], hps['image_size'], 1))
-                
-                for i, coco_class in enumerate(coco_classes):
-                    qd_classes = qd_meta['coco_to_sketch'][coco_class]
-                    rand_id = random.randint(0, len(qd_classes)-1)
-                    qd_class = qd_classes[rand_id]
-                    qd_class_ids.append(qd_meta['qd_classes_to_idx'][qd_class])
+            for i, coco_class in enumerate(coco_classes):
+                qd_classes = qd_meta['coco_to_sketch'][coco_class]
+                rand_id = random.randint(0, len(qd_classes)-1)
+                qd_class = qd_classes[rand_id]
+                qd_class_ids.append(qd_meta['qd_classes_to_idx'][qd_class])
                     
-                    # load qd data
+                # load qd w/h ratios
+                x, y, w, h = c_boxes_orig[i]
+                sel_id = find_closest_qd_obj(w, h, set_type, qd_class, k=20)
                     
-                    # load qd w/h ratios
-                    x, y, w, h = c_boxes_orig[i]
-                    sel_id = find_closest_qd_obj(w, h, set_type, qd_class, k=20)
+                qd_data = read_quickdraw_npz(class_files[qd_class], partition=set_type, idx=sel_id)
+                save_dir = os.path.join(save_path, f'{str(i+1)}_{qd_class}.png')
+                raster_sketches[i] = draw_sketch(np.asarray(qd_data), save_dir, white_bg=True)
+                sample_ids.append(sel_id)
                     
-                    qd_data = read_quickdraw_npz(class_files[qd_class], partition=set_type, idx=sel_id)
-                    save_dir = os.path.join(save_path, f'{str(i+1)}_{qd_class}.png')
-                    raster_sketches[i] = draw_sketch(np.asarray(qd_data), save_dir, white_bg=True)
-                    sample_ids.append(sel_id)
-                    
-                    scene_img["data"]["objects"].append({"stroke-3": np.asarray(qd_data), "x": x, "y": y, "h": h, "w": w})
+                scene_img["data"]["objects"].append({"stroke-3": np.asarray(qd_data), "x": x, "y": y, "h": h, "w": w})
                         
-                # scene info added 
-                generated_scene = generate_scene_from_single_img(scene_img)
-                sketch = np.asarray(generated_scene["scene_strokes"])
-                save_dir = os.path.join(save_path, '0_scene.png')
-                scene = draw_sketch(sketch, save_dir, is_absolute=True, white_bg=True)
+            # scene info added 
+            generated_scene = generate_scene_from_single_img(scene_img)
+            sketch = np.asarray(generated_scene["scene_strokes"])
+            save_dir = os.path.join(save_path, '0_scene.png')
+            scene = draw_sketch(sketch, save_dir, is_absolute=True, white_bg=True)
                 
                 
-                c_boxes_orig = np.insert(c_boxes_orig, 0, [0, 0, img_w, img_h], axis=0)
+            c_boxes_orig = np.insert(c_boxes_orig, 0, [0, 0, img_w, img_h], axis=0)
                 
-                # object_divisions of scene
-                object_divisions = np.asarray(generated_scene["object_divisions"])
+            # object_divisions of scene
+            object_divisions = np.asarray(generated_scene["object_divisions"])
                 
-                # scale each sketch object bboxes and add scene sketch bbox
-                sketch_bboxes = np.asarray(generated_scene["sketch_bboxes"])
-                sketch_bboxes = scale_bboxes(sketch_bboxes, hps["image_size"], hps["image_margin"])
-                scene_min, scene_max = hps["image_margin"], hps["image_size"] - hps["image_margin"]
-                sketch_bboxes = np.insert(sketch_bboxes, 0, [scene_min, scene_min, scene_max, scene_max], axis=0)
+            # scale each sketch object bboxes and add scene sketch bbox
+            sketch_bboxes = np.asarray(generated_scene["sketch_bboxes"])
+            sketch_bboxes = scale_bboxes(sketch_bboxes, hps["image_size"], hps["image_margin"])
+            scene_min, scene_max = hps["image_margin"], hps["image_size"] - hps["image_margin"]
+            sketch_bboxes = np.insert(sketch_bboxes, 0, [scene_min, scene_min, scene_max, scene_max], axis=0)
                 
-                res_dict = {"img_id": img_id, "sketch_bboxes": sketch_bboxes.tolist(),
-                            "raster_sketches": raster_sketches.tolist(), "qd_class_ids": qd_class_ids, 
-                            "sample_ids": sample_ids, "scene": scene.tolist(),
-                            "object_divisions": object_divisions.tolist()}
+            res_dict = {"img_id": img_id, "sketch_bboxes": sketch_bboxes.tolist(),
+                        "raster_sketches": raster_sketches.tolist(), "qd_class_ids": qd_class_ids, 
+                        "sample_ids": sample_ids, "scene": scene.tolist(),
+                        "object_divisions": object_divisions.tolist()}
                             
-                with open(os.path.join(save_path, "data_info.json"), "w") as f:
-                    json.dump(res_dict, f)
+            with open(os.path.join(save_path, "data_info.json"), "w") as f:
+                json.dump(res_dict, f)
                     
-                image_counter += 1
+            image_counter += 1
         
     return image_counter
     
@@ -163,11 +151,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Prepare large dataset for chunked loading')
     parser.add_argument('--dataset-dir', default='/datasets/COCO')
-    parser.add_argument('--target-dir', default='coco-records')
-    parser.add_argument('--n-chunks', type=int, default=5)
-    parser.add_argument('--test-n-chunks', type=int, default=1)
-    parser.add_argument('--valid-n-chunks', type=int, default=1)
-    parser.add_argument('--val-size', type=int, default=1024)
+    parser.add_argument('--target-dir', default='coco-records-temp')
     parser.add_argument('--hparams', type=str)
     
     parser.add_argument('--qd-dataset-dir', default='/datasets/quickdraw/sketchrnn/npz')
@@ -203,6 +187,21 @@ def main():
     if args.hparams is not None:
         hps = hps.parse(args.hparams)
     hps = dict(hps.values())
+    
+    f = open(os.path.join(args.target_dir, "data_info.txt"), "w")
+    f.write('############################## Dataset Info ################################ \n')
+    f.write("image_size: {} \n".format(hps["image_size"]))
+    f.write("min_object_size: {} \n".format(hps["min_object_size"]))
+    f.write("min_objects_per_image: {} \n".format(hps["min_objects_per_image"]))
+    f.write("max_objects_per_image: {} \n".format(hps["max_objects_per_image"]))
+    f.write("max_objects_per_category: {} \n".format(hps["max_objects_per_category"]))
+    f.write("min_category_per_image: {} \n".format(hps["min_category_per_image"]))
+    f.write("overlap_ratio: {} \n".format(hps["overlap_ratio"]))
+    f.write("mask_size: {} \n".format(hps["mask_size"]))
+    f.write("image_margin: {} \n".format(hps["image_margin"]))
+    f.write("include_image_obj: {} \n".format(hps["include_image_obj"]))
+    f.write("excluded_meta_file: {} \n".format(hps["excluded_meta_file"]))
+    f.close()
 
     # get all the full paths
     train_image_dir = os.path.join(args.dataset_dir, 'train2017')
@@ -228,24 +227,55 @@ def main():
     # load up all train metadata
     print("Loading train metadata...")
     (object_idx_to_name, object_name_to_idx, objects_list, total_objs,
-     train_image_ids,
-     train_image_id_to_filename,
-     train_image_id_to_size,
-     train_image_id_to_objects) = coco.prepare_and_load_metadata(train_instances_json, train_stuff_json)
-    train_n_images = len(train_image_ids)
-
+     train_image_ids, _,
+     image_id_to_size,
+     image_id_to_objects) = coco.prepare_and_load_metadata(train_instances_json, train_stuff_json)
+    
     # load up all valid metadata
     print("Loading validation metadata...")
     (_, _, _, _,
-     valid_image_ids,
-     valid_image_id_to_filename,
+     valid_image_ids, _,
      valid_image_id_to_size,
      valid_image_id_to_objects) = coco.prepare_and_load_metadata(val_instances_json, val_stuff_json)
+     
+    # load up all val and train dicts together
+    image_id_to_objects.update(valid_image_id_to_objects)
+    image_id_to_size.update(valid_image_id_to_size)
+    
+    # Image dirs
+    train_image_dirs = [train_image_dir] * len(train_image_ids)
+    val_image_dirs = [val_image_dir] * len(valid_image_ids)
+    all_dirs = train_image_dirs + val_image_dirs
+    
+    # Image ids
+    all_image_ids = train_image_ids + valid_image_ids
 
-    # break valid and train into two sets
-    test_image_ids = valid_image_ids[args.val_size:]
-    valid_image_ids = valid_image_ids[:args.val_size]
-    test_n_images, valid_n_images = len(test_image_ids), len(valid_image_ids)
+    # Shuffle both in the same order
+    temp = list(zip(all_image_ids, all_dirs))
+    random.shuffle(temp)
+    res1, res2 = zip(*temp)
+    all_image_ids, all_dirs = list(res1), list(res2)
+    
+    # Divide train - val - test datasets with split ratio 60 - 10 - 30
+    train_size = int(len(all_image_ids) * 60 / 100)
+    val_size = int(len(all_image_ids) * 10 / 100)
+    test_size = len(all_image_ids) - (train_size + val_size)
+    
+    train_image_ids = all_image_ids[:train_size]
+    valid_image_ids = all_image_ids[train_size:train_size+val_size]
+    test_image_ids = all_image_ids[train_size+val_size:]
+    
+    train_image_dirs = all_dirs[:train_size]
+    val_image_dirs = all_dirs[train_size:train_size+val_size]
+    test_image_dirs = all_dirs[train_size+val_size:]
+    
+    test_n_images, valid_n_images, train_n_images = len(test_image_ids), len(valid_image_ids), len(train_image_ids)
+    
+    f = open(os.path.join(args.target_dir, "data_info.txt"), "a")
+    f.write("train_n_images: {} \n".format(train_n_images))
+    f.write("valid_n_images: {} \n".format(valid_n_images))
+    f.write("test_n_images: {} \n".format(test_n_images))
+    f.close()
 
     with open(hps['excluded_meta_file']) as emf:
         materials_metadata = json.load(emf)
@@ -282,17 +312,13 @@ def main():
     }
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
-    
     """
     # validation
     c_meta['n_valid_samples'] = load_all_data_and_save_in_chunks(
-        n_chunks=args.valid_n_chunks,
-        chunk_size=valid_n_images // args.valid_n_chunks,
         image_ids=valid_image_ids,
-        image_dir=val_image_dir,
-        id_to_filename=valid_image_id_to_filename,
-        id_to_size=valid_image_id_to_size,
-        id_to_objects=valid_image_id_to_objects,
+        image_dirs=val_image_dirs,
+        id_to_size=image_id_to_size,
+        id_to_objects=image_id_to_objects,
         base_filepath=valid_basename,
         class_files=class_files,
         set_type='valid',
@@ -302,17 +328,13 @@ def main():
     print("Saved {} images for valid set".format(c_meta['n_valid_samples']))
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
-        
-    """
+    """    
     # test
     c_meta['n_test_samples'] = load_all_data_and_save_in_chunks(
-        n_chunks=args.test_n_chunks,
-        chunk_size=test_n_images // args.test_n_chunks,
         image_ids=test_image_ids,
-        image_dir=val_image_dir,
-        id_to_filename=valid_image_id_to_filename,
-        id_to_size=valid_image_id_to_size,
-        id_to_objects=valid_image_id_to_objects,
+        image_dirs=test_image_dirs,
+        id_to_size=image_id_to_size,
+        id_to_objects=image_id_to_objects,
         base_filepath=test_basename,
         class_files=class_files,
         set_type='test',
@@ -325,13 +347,10 @@ def main():
     """
     # finally, the train set
     c_meta['n_train_samples'] = load_all_data_and_save_in_chunks(
-        n_chunks=args.n_chunks,
-        chunk_size=train_n_images // args.n_chunks,
         image_ids=train_image_ids,
-        image_dir=train_image_dir,
-        id_to_filename=train_image_id_to_filename,
-        id_to_size=train_image_id_to_size,
-        id_to_objects=train_image_id_to_objects,
+        image_dirs=train_image_dirs,
+        id_to_size=image_id_to_size,
+        id_to_objects=image_id_to_objects,
         base_filepath=train_basename,
         class_files=class_files,
         set_type='train',
@@ -342,6 +361,5 @@ def main():
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
     """
-    
 if __name__ == '__main__':
     main()
