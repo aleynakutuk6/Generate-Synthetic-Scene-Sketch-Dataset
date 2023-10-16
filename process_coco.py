@@ -312,7 +312,7 @@ def main():
     }
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
-    """
+    
     # validation
     c_meta['n_valid_samples'] = load_all_data_and_save_in_chunks(
         image_ids=valid_image_ids,
@@ -328,7 +328,7 @@ def main():
     print("Saved {} images for valid set".format(c_meta['n_valid_samples']))
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
-    """    
+        
     # test
     c_meta['n_test_samples'] = load_all_data_and_save_in_chunks(
         image_ids=test_image_ids,
@@ -344,7 +344,7 @@ def main():
     print("Saved {} images for test set".format(c_meta['n_test_samples']))
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
-    """
+    
     # finally, the train set
     c_meta['n_train_samples'] = load_all_data_and_save_in_chunks(
         image_ids=train_image_ids,
@@ -360,6 +360,6 @@ def main():
     print("Saved {} images for train set".format(c_meta['n_train_samples']))
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
-    """
+    
 if __name__ == '__main__':
     main()

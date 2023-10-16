@@ -1,7 +1,8 @@
 coco-records
+coco-small
 coco-records-ver2
 log_files
 qd_ratios
 qd_coco_files
-generate_script.sh
 custom-dataset
+json_files

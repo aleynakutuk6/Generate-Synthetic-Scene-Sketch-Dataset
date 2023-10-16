@@ -3,6 +3,7 @@ import numpy as np
 import os
 import argparse
 import copy
+import random
 
 from rdp import rdp
 from tqdm import tqdm
@@ -44,6 +45,7 @@ def default_hparams():
 def load_custom_data(data_filename, target_dir, qd_meta, hps):
     
     image_counter = 0
+    external_classes_to_idx = {}
     
     save_path = os.path.join(target_dir, "test")
     if not os.path.isdir(save_path):
@@ -87,8 +89,6 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
             
             min_x, min_y, max_x, max_y = get_relative_bounds_customized(sketch_temp)
             sketch_bboxes.append([min_x, min_y, max_x, max_y])
-            img_path = os.path.join(save_dir, f'{str(sketch_num+1)}_{label}.png')
-            raster_sketches[sketch_num] = draw_sketch(np.asarray(sketch_temp), img_path, white_bg=True)
             
             sketch[0, :2] -= last_stroke
             last_stroke[0] = lines[-1][-1][0]
@@ -97,7 +97,28 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
             scene.extend(sketch.tolist())
             num_sk_strokes = int(np.sum(sketch[..., -1] == 1))
             sketch_divisions.append(sketch_divisions[-1] + num_sk_strokes)
-            qd_class_ids.append(qd_meta['qd_classes_to_idx'][label])
+            
+            if label in qd_meta['qd_classes_to_idx'].keys():
+                sel_id = qd_meta['qd_classes_to_idx'][label]
+                
+            elif label in qd_meta['coco_to_sketch'].keys():
+                qd_classes = qd_meta['coco_to_sketch'][label]
+                rand_id = random.randint(0, len(qd_classes)-1)
+                label = qd_classes[rand_id]
+                sel_id = qd_meta['qd_classes_to_idx'][label]
+                
+            else:
+                ex_cls_ids = [c for c in range(345, 2000)]
+                while True:
+                    sel_id = int(random.choice(ex_cls_ids))
+                    if sel_id not in external_classes_to_idx.values():
+                        break
+                external_classes_to_idx[label] = sel_id                  
+                
+            qd_class_ids.append(sel_id)
+            
+            img_path = os.path.join(save_dir, f'{str(sketch_num+1)}_{label}.png')
+            raster_sketches[sketch_num] = draw_sketch(np.asarray(sketch_temp), img_path, white_bg=True)
         
         sketch_divisions = np.asarray(sketch_divisions)
         
@@ -118,6 +139,10 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
                         
         with open(os.path.join(save_dir, "data_info.json"), "w") as f:
             json.dump(res_dict, f)
+        
+        add_meta = {"external_classes_to_idx": external_classes_to_idx}
+        with open(os.path.join(target_dir, "external_classes_to_idx.json"), 'w') as outfile:
+            json.dump(add_meta, outfile)
         
         image_counter += 1
         
