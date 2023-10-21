@@ -1,8 +1,8 @@
-from draw_scene import *
 from utils.hparams import *
 from utils.sketch import *
 from rdp import rdp
 from tqdm import tqdm
+from draw_scene import *
 
 import numpy as np
 import copy

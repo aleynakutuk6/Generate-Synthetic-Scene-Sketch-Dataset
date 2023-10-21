@@ -147,7 +147,7 @@ def should_keep_object(size, obj, hps, meta, materials=False):
     return box_ok and category_ok and is_not_other
 
 
-def should_keep_image(img, size, objects, min_objs, max_objs, meta):
+def should_keep_image(size, objects, min_objs, max_objs, meta):
     n_objs = len(objects)
     for o in objects:
         if meta['obj_ID_to_name'][o['category_id']] in meta['fully_excluded_objs']:
@@ -311,6 +311,7 @@ def filter_objs_customized(size, objs, hps, meta, filter_obj_ids=None, materials
             continue
         if should_keep_object(size, obj, hps, meta, materials):
             obj_id = obj['id']
+            obj_ids.append(obj_id)
             x, y, w, h = obj['bbox']
             o_cat_id = obj['category_id']
             box_area = (w * h) / (W * H)
@@ -352,6 +353,7 @@ def filter_objs_customized(size, objs, hps, meta, filter_obj_ids=None, materials
                 break
         n_id += 1
     
+    obj_ids = []
     for obj in objs:
         obj_id = obj['id']
         if obj_id in sel_ids:
@@ -361,7 +363,7 @@ def filter_objs_customized(size, objs, hps, meta, filter_obj_ids=None, materials
     return c_objs
 
 
-def preprocess(img, size, objs, hps, meta, filter_obj_ids=None, return_ids=False, return_materials=False):
+def preprocess(size, objs, hps, meta, filter_obj_ids=None, return_ids=False, return_materials=False):
 
     # create arrays to represent the current (c) image objects
     c_objs = filter_objs_customized(size, objs, hps, meta, filter_obj_ids)
@@ -369,8 +371,8 @@ def preprocess(img, size, objs, hps, meta, filter_obj_ids=None, return_ids=False
     if return_materials:
         bg_objs = filter_objs_customized(size, objs, hps, meta, filter_obj_ids, materials=True)
 
-    if not should_keep_image(img, size, c_objs, hps['min_objects_per_image'], hps['max_objects_per_image'], meta):
-        n_nones = 4
+    if not should_keep_image(size, c_objs, hps['min_objects_per_image'], hps['max_objects_per_image'], meta):
+        n_nones = 3
         if return_ids:
             n_nones += 1
         elif return_materials:
@@ -379,7 +381,7 @@ def preprocess(img, size, objs, hps, meta, filter_obj_ids=None, return_ids=False
 
     # preprocess image size
     WW, HH = size
-    preprocessed_image = preprocess_image(img, hps['image_size'])
+    # preprocessed_image = preprocess_image(img, 256) # normally give hps['image_size']
     
     # compute all metadata to build a scene graph
     c_objs_y, c_boxes, c_boxes_orig = compute_scene_graph_for_image_customized(size, c_objs, hps, meta)
@@ -391,7 +393,7 @@ def preprocess(img, size, objs, hps, meta, filter_obj_ids=None, return_ids=False
         bg_c_objs_y, bg_c_boxes, bg_c_masks, _, _ = compute_scene_graph_for_image(size, bg_objs, hps, meta, include_image_obj=True)
         bg_c_objs_y = [meta['obj_ID_to_idx'][y] for y in bg_c_objs_y]
 
-    return_vals = [preprocessed_image, c_objs_y, np.array(c_boxes), np.array(c_boxes_orig)]
+    return_vals = [c_objs_y, np.array(c_boxes), np.array(c_boxes_orig)]
     if return_ids:
         ids = [c['id'] for c in c_objs]
         return_vals += [ids]
@@ -399,31 +401,6 @@ def preprocess(img, size, objs, hps, meta, filter_obj_ids=None, return_ids=False
         return_vals += [bg_c_objs_y, bg_c_boxes, bg_c_masks]
 
     return return_vals
-
-
-def preprocess_for_boxes(img, size, objs, hps, meta, filter_obj_ids=None, return_ids=False, masked=False):
-
-    c_objs = filter_objs(size, objs, hps, meta, filter_obj_ids)
-
-    if not should_keep_image(img, size, c_objs, 1, 10, meta):
-        if return_ids:
-            return [None] * 3
-        else:
-            return [None] * 2
-
-    preprocessed_image = preprocess_image(img, hps['scene_size'])
-
-    # crop all the objects out of the image
-    c_crops, c_objs_y = extract_obj_crops(preprocessed_image, size, c_objs, hps, meta, masked)
-
-    # convert objs y from ids to idx's on the list
-    c_objs_y = [meta['obj_ID_to_idx'][y] for y in c_objs_y]
-
-    if return_ids:
-        ids = [c['id'] for c in c_objs]
-        return c_crops, c_objs_y, ids
-    else:
-        return c_crops, c_objs_y
 
 
 def extract_obj_crops(image, image_size, c_objs, hps, meta, masked=False):

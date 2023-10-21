@@ -13,7 +13,7 @@ from draw_scene import *
 
 
 #########################################################
-
+"""
 def scale_bboxes(sketch_bboxes, image_size, margin):
     
     xmin, ymin = sketch_bboxes[..., :2].min(axis=0)
@@ -25,19 +25,20 @@ def scale_bboxes(sketch_bboxes, image_size, margin):
     w, h = (xmax - xmin), (ymax - ymin)
     rate = (image_size - (2*margin)) / max(w, h)
     normalized_bboxes = (rate * sketch_bboxes) + margin
-
-    return normalized_bboxes
     
+    return normalized_bboxes
+"""
 
 def default_hparams():
     hps = HParams(
-        image_size=224,
+        obj_size=224,
         min_object_size=0.05,
         min_objects_per_image=3,
         max_objects_per_image=5,
         max_objects_per_category=3,
         min_category_per_image=3,
-        image_margin=20
+        canvas_w=400,
+        canvas_h=300
     )
     return hps
     
@@ -67,7 +68,7 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
         
         scene, qd_class_ids = [], []
         sketch_divisions, sketch_bboxes = [0], []
-        raster_sketches = np.zeros((len(scene_info), hps['image_size'], hps['image_size'], 1))
+        raster_sketches = np.zeros((len(coco_classes), hps['obj_size'], hps['obj_size'], 1))
         last_stroke = np.asarray([0, 0])
         for sketch_num, sketch in enumerate(scene_info):
             lines = []
@@ -118,24 +119,31 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
             qd_class_ids.append(sel_id)
             
             img_path = os.path.join(save_dir, f'{str(sketch_num+1)}_{label}.png')
-            raster_sketches[sketch_num] = draw_sketch(np.asarray(sketch_temp), img_path, white_bg=True)
+            raster_sketches[sketch_num] = draw_sketch(np.asarray(qd_data), save_dir, white_bg=True, max_dim=hps['obj_size'])
         
         sketch_divisions = np.asarray(sketch_divisions)
         
         # scale each sketch object bboxes and add scene sketch bbox
         sketch_bboxes = np.asarray(sketch_bboxes)
-        sketch_bboxes = scale_bboxes(sketch_bboxes, hps["image_size"], hps["image_margin"])
-        scene_min, scene_max = hps["image_margin"], hps["image_size"] - hps["image_margin"]
-        sketch_bboxes = np.insert(sketch_bboxes, 0, [scene_min, scene_min, scene_max, scene_max], axis=0)
+        canvas_h = hps["canvas_h"]
+        canvas_w = hps["canvas_w"]
+        sketch_bboxes = np.insert(sketch_bboxes, 0, [0.0, 0.0, canvas_w, canvas_h], axis=0)
             
         img_path = os.path.join(save_dir, "0_scene.png")
-        scene = draw_sketch(np.asarray(scene), img_path, is_absolute=False, white_bg=True)
+        scene_size = max(, hps["canvas_w"])
+        scene = draw_sketch(np.asarray(scene), img_path, is_absolute=False, white_bg=True, keep_size=True, max_dim=scene_size)
         
         # todo: class ids needs to be inserted 
-        res_dict = {"img_id": img_id, "sketch_bboxes": sketch_bboxes.tolist(),
-                    "raster_sketches": raster_sketches.tolist(), "qd_class_ids": qd_class_ids,
-                    "scene": scene.tolist(), "object_divisions": sketch_divisions.tolist(),
-                    "agreement": agreement, "scene_description": scene_description}
+        res_dict = {"img_id": img_id, 
+                    "canvas_w": canvas_w,
+                    "canvas_h": canvas_h, 
+                    "sketch_bboxes": sketch_bboxes.tolist(),
+                    "raster_sketches": raster_sketches.tolist(),
+                    "qd_class_ids": qd_class_ids,
+                    "scene": scene.tolist(),
+                    "object_divisions": sketch_divisions.tolist(),
+                    "agreement": agreement,
+                    "scene_description": scene_description}
                         
         with open(os.path.join(save_dir, "data_info.json"), "w") as f:
             json.dump(res_dict, f)

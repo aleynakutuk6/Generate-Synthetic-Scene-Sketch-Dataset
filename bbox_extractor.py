@@ -10,7 +10,7 @@ from PIL import Image
 def plot_bounding_box(img_dir, filename, sketch_bboxes, qd_class_ids):
 
     
-    img = imageio.v2.imread(os.path.join(img_dir, filename))
+    img = imageio.imread(os.path.join(img_dir, filename))
 
     fig, ax = plt.subplots()
     ax.imshow(img)
@@ -46,8 +46,8 @@ def plot_bounding_box(img_dir, filename, sketch_bboxes, qd_class_ids):
     # plt.show()
     
 
-data_path = "coco-records/valid"
-img_id = 181796
+data_path = "coco-records-latest/valid"
+img_id = 473199
 img_dir = os.path.join(data_path, str(img_id))
 filename = "0_scene.png"
 with open(os.path.join(img_dir, "data_info.json"), "r") as f:
