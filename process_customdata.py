@@ -4,13 +4,15 @@ import os
 import argparse
 import copy
 import random
+import cv2
 
 from rdp import rdp
 from tqdm import tqdm
 from utils.sketch import *
 from utils.hparams import *
 from draw_scene import *
-
+from generate_scene import *
+from Sketchformer.sketchformer_api import *
 
 #########################################################
 """
@@ -31,14 +33,16 @@ def scale_bboxes(sketch_bboxes, image_size, margin):
 
 def default_hparams():
     hps = HParams(
-        obj_size=224,
+        obj_size=480,
         min_object_size=0.05,
         min_objects_per_image=3,
         max_objects_per_image=5,
         max_objects_per_category=3,
         min_category_per_image=3,
-        canvas_w=400,
-        canvas_h=300
+        save_embeds=True,
+        img_w=1100,
+        img_h=770,
+        scale_factor=255.0
     )
     return hps
     
@@ -55,6 +59,9 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
     with open(os.path.join(target_dir, data_filename), 'r') as f:
         data = json.load(f)
     
+    if hps["save_embeds"]:
+        model = get_model()
+    
     for scene_num, key_id in enumerate(tqdm(data["sceneData"])):
         user_email = data["sceneData"][key_id]["user_email"]
         img_id = user_email + f"_{scene_num}"
@@ -66,14 +73,18 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
         scene_description = data["sceneData"][key_id]["scene_description"]
         agreement = data["sceneData"][key_id]["agreement"]
         
+        if hps["save_embeds"]:
+            X_test = []
+                
         scene, qd_class_ids = [], []
         sketch_divisions, sketch_bboxes = [0], []
-        raster_sketches = np.zeros((len(coco_classes), hps['obj_size'], hps['obj_size'], 1))
+        raster_sketches = np.zeros((len(scene_info), hps['obj_size'], hps['obj_size'], 1))
         last_stroke = np.asarray([0, 0])
         for sketch_num, sketch in enumerate(scene_info):
             lines = []
             drawing = sketch["drawing"]
             label = sketch["labels"]
+            label = label.lower().strip()
             for stroke in drawing:
                 line = []
                 for x, y in zip(stroke[0], stroke[1]):
@@ -85,10 +96,11 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
                     lines.append(simplified_line) 
             
             sketch = lines_to_strokes(lines)
-            sketch_temp = copy.deepcopy(sketch)
-            sketch_temp = normalize(sketch_temp)
             
-            min_x, min_y, max_x, max_y = get_relative_bounds_customized(sketch_temp)
+            sketch_temp = copy.deepcopy(sketch)
+            abs_sketch = relative_to_absolute_customized(sketch_temp)
+            min_x, min_y, max_x, max_y = get_absolute_bounds_customized(abs_sketch)
+            
             sketch_bboxes.append([min_x, min_y, max_x, max_y])
             
             sketch[0, :2] -= last_stroke
@@ -98,8 +110,9 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
             scene.extend(sketch.tolist())
             num_sk_strokes = int(np.sum(sketch[..., -1] == 1))
             sketch_divisions.append(sketch_divisions[-1] + num_sk_strokes)
-            
-            if label in qd_meta['qd_classes_to_idx'].keys():
+
+            qd_classes = [c.lower() for c in qd_meta['qd_classes_to_idx'].keys()]
+            if label in qd_classes:
                 sel_id = qd_meta['qd_classes_to_idx'][label]
                 
             elif label in qd_meta['coco_to_sketch'].keys():
@@ -119,29 +132,60 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
             qd_class_ids.append(sel_id)
             
             img_path = os.path.join(save_dir, f'{str(sketch_num+1)}_{label}.png')
-            raster_sketches[sketch_num] = draw_sketch(np.asarray(qd_data), save_dir, white_bg=True, max_dim=hps['obj_size'])
+            raster_sketches[sketch_num] = draw_sketch(np.asarray(sketch_temp), img_path, white_bg=True, max_dim=hps['obj_size'])
+            
+            if hps["save_embeds"]:
+                sketch_temp = copy.deepcopy(np.asarray(sketch_temp))
+                abs_sketch = relative_to_absolute_customized(sketch_temp)
+                
+                min_x, min_y, max_x, max_y = get_absolute_bounds_customized(abs_sketch)
+                
+                scale = hps['scale_factor'] / max([max_x - min_x, max_y - min_y, 1])
+                # align the drawing to the top-left corner, to have minimum values of 0.
+                abs_sketch[:, 0] -= min_x
+                abs_sketch[:, 1] -= min_y
+                
+                # uniformly scale the drawing, to have a maximum value of 255.
+                abs_sketch[:, :2] *= scale
+                
+                sketch_relative = to_relative(abs_sketch)
+                sketch_normalized = normalize(sketch_relative)
+                X_test.append(sketch_normalized)
         
         sketch_divisions = np.asarray(sketch_divisions)
         
+        scene_strokes = np.asarray(scene)
+        
         # scale each sketch object bboxes and add scene sketch bbox
         sketch_bboxes = np.asarray(sketch_bboxes)
-        canvas_h = hps["canvas_h"]
-        canvas_w = hps["canvas_w"]
-        sketch_bboxes = np.insert(sketch_bboxes, 0, [0.0, 0.0, canvas_w, canvas_h], axis=0)
+        img_h = hps["img_h"]
+        img_w = hps["img_w"]
+        scene_size = max(img_h, img_w)
+        sketch_bboxes = np.insert(sketch_bboxes, 0, [0.0, 0.0, img_w, img_h], axis=0)
             
         img_path = os.path.join(save_dir, "0_scene.png")
-        scene_size = max(, hps["canvas_w"])
-        scene = draw_sketch(np.asarray(scene), img_path, is_absolute=False, white_bg=True, keep_size=True, max_dim=scene_size)
+        raster_scene = draw_sketch(copy.deepcopy(scene_strokes), img_path, is_absolute=False, white_bg=True, keep_size=True, max_dim=scene_size)
         
-        # todo: class ids needs to be inserted 
+        if hps["save_embeds"]:
+            object_embeds, predicted, class_scores = retrieve_embedding_and_classes_from_batch(model, X_test)
+            object_embeds = object_embeds.tolist()
+            class_scores = class_scores.numpy().tolist()
+        else:
+            object_embeds = None
+            class_scores = None
+            predicted = None
+                
         res_dict = {"img_id": img_id, 
-                    "canvas_w": canvas_w,
-                    "canvas_h": canvas_h, 
+                    "img_w": img_w, "img_h": img_h, 
                     "sketch_bboxes": sketch_bboxes.tolist(),
                     "raster_sketches": raster_sketches.tolist(),
                     "qd_class_ids": qd_class_ids,
-                    "scene": scene.tolist(),
+                    "scene": raster_scene.tolist(),
                     "object_divisions": sketch_divisions.tolist(),
+                    "scene_strokes": scene_strokes.tolist(),
+                    "object_embeds": object_embeds,
+                    "class_scores": class_scores,
+                    "predicted": predicted,
                     "agreement": agreement,
                     "scene_description": scene_description}
                         
@@ -187,7 +231,7 @@ def main():
             sketch_to_coco_clean[class_name] = mapped
     coco_classes = list(set(sketch_to_coco_clean.values()))
     coco_classes_to_idx = {c: i for i, c in enumerate(coco_classes)}
-    qd_classes_to_idx = {c: i for i, c in enumerate(sketch_to_coco.keys())}
+    qd_classes_to_idx = {c.lower(): i for i, c in enumerate(sketch_to_coco.keys())}
 
     qd_meta = {"coco_classes": coco_classes, "sketch_to_coco": sketch_to_coco_clean,
                 "coco_classes_to_idx": coco_classes_to_idx, "qd_classes_to_idx": qd_classes_to_idx, 

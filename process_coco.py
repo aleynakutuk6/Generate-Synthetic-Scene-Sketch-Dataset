@@ -113,17 +113,16 @@ def load_all_data_and_save_in_chunks(image_ids, id_to_size, id_to_objects,
                         
             # scene info added 
             generated_scene = generate_scene_from_single_img(scene_img)
-            sketch = np.asarray(generated_scene["scene_strokes"])
+            scene_strokes = np.asarray(generated_scene["scene_strokes"])
             save_dir = os.path.join(save_path, '0_scene.png')
             scene_size = max(img_h, img_w)
-            scene = draw_sketch(sketch, save_dir, is_absolute=True, white_bg=True, keep_size=True, max_dim=scene_size)
+            raster_scene = draw_sketch(copy.deepcopy(scene_strokes), save_dir, is_absolute=True, white_bg=True, keep_size=True, max_dim=scene_size)
                 
             c_boxes_orig = np.insert(c_boxes_orig, 0, [0, 0, img_w, img_h], axis=0)
                 
             # object_divisions of scene
             object_divisions = np.asarray(generated_scene["object_divisions"])
-            
-            scene_strokes = np.asarray(generated_scene["scene_strokes"])
+
             
             sketch_bboxes = np.asarray(generated_scene["sketch_bboxes"])
             # sketch_bboxes = scale_bboxes(sketch_bboxes, hps, img_w, img_h)
@@ -145,7 +144,7 @@ def load_all_data_and_save_in_chunks(image_ids, id_to_size, id_to_objects,
                         "raster_sketches": raster_sketches.tolist(), 
                         "qd_class_ids": qd_class_ids, 
                         "sample_ids": sample_ids, 
-                        "scene": scene.tolist(),
+                        "scene": raster_scene.tolist(),
                         "object_divisions": object_divisions.tolist(),
                         "scene_strokes": scene_strokes.tolist(),
                         "object_embeds": object_embeds,
@@ -188,7 +187,7 @@ def main():
             sketch_to_coco_clean[class_name] = mapped
     coco_classes = list(set(sketch_to_coco_clean.values()))
     coco_classes_to_idx = {c: i for i, c in enumerate(coco_classes)}
-    qd_classes_to_idx = {c: i for i, c in enumerate(sketch_to_coco.keys())}
+    qd_classes_to_idx = {c.lower(): i for i, c in enumerate(sketch_to_coco.keys())}
 
     qd_meta = {"coco_classes": coco_classes, "sketch_to_coco": sketch_to_coco_clean,
                 "coco_classes_to_idx": coco_classes_to_idx, "qd_classes_to_idx": qd_classes_to_idx, 
@@ -216,7 +215,7 @@ def main():
     f.write("include_image_obj: {} \n".format(hps["include_image_obj"]))
     f.write("excluded_meta_file: {} \n".format(hps["excluded_meta_file"]))
     f.close()
-
+    
     # get all the full paths
     train_image_dir = os.path.join(args.dataset_dir, 'train2017')
     val_image_dir = os.path.join(args.dataset_dir, 'val2017')
@@ -263,13 +262,15 @@ def main():
     
     # Image ids
     all_image_ids = train_image_ids + valid_image_ids
-
+    
+    
     # Shuffle both in the same order
     temp = list(zip(all_image_ids, all_dirs))
     random.shuffle(temp)
     res1, res2 = zip(*temp)
     all_image_ids, all_dirs = list(res1), list(res2)
     
+
     # Divide train - val - test datasets with split ratio 60 - 10 - 30
     train_size = int(len(all_image_ids) * 60 / 100)
     val_size = int(len(all_image_ids) * 10 / 100)
@@ -282,6 +283,17 @@ def main():
     train_image_dirs = all_dirs[:train_size]
     val_image_dirs = all_dirs[train_size:train_size+val_size]
     test_image_dirs = all_dirs[train_size+val_size:]
+
+    
+    """
+    for data_dir in [train_basename, valid_basename, test_basename]:
+        for img_dir in os.listdir(data_dir):
+            img_dir = int(img_dir)
+            if img_dir in all_image_ids:
+                idx = all_image_ids.index(img_dir)
+                all_image_ids = all_image_ids[:idx] + all_image_ids[idx+1:]
+    
+    """
     
     test_n_images, valid_n_images, train_n_images = len(test_image_ids), len(valid_image_ids), len(train_image_ids)
     
@@ -291,6 +303,7 @@ def main():
     f.write("test_n_images: {} \n".format(test_n_images))
     f.close()
 
+    
     with open(hps['excluded_meta_file']) as emf:
         materials_metadata = json.load(emf)
         concrete_objs = materials_metadata["objects"]
@@ -325,7 +338,7 @@ def main():
     }
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
-    
+    """
     # validation
     c_meta['n_valid_samples'] = load_all_data_and_save_in_chunks(
         image_ids=valid_image_ids,
@@ -360,7 +373,7 @@ def main():
     
     # finally, the train set
     c_meta['n_train_samples'] = load_all_data_and_save_in_chunks(
-        image_ids=train_image_ids,
+        image_ids=train_image_ids,  
         # image_dirs=train_image_dirs,
         id_to_size=image_id_to_size,
         id_to_objects=image_id_to_objects,
@@ -373,6 +386,6 @@ def main():
     print("Saved {} images for train set".format(c_meta['n_train_samples']))
     with open(meta_filename, 'w') as outfile:
         json.dump(c_meta, outfile)
-        
+    """
 if __name__ == '__main__':
     main()

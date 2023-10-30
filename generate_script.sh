@@ -31,7 +31,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint=tesla_t4 
 #SBATCH --time=120:00:00 
-#SBATCH --output=log_files/generate_data_new.log
+#SBATCH --output=log_files/generate_data_new_2.log
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=akutuk21@ku.edu.tr
 
