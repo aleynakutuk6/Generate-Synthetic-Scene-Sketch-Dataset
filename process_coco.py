@@ -39,7 +39,8 @@ def find_closest_qd_obj(o_width, o_height, set_type, npz_name, k=1):
     sel_sample_id = int(top_idxs[rand_id])
     
     return sel_sample_id  
-    
+
+
 def default_hparams():
     hps = hparams.HParams(
         obj_size=480,

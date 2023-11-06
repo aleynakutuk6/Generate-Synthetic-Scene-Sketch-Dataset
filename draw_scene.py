@@ -29,6 +29,8 @@ def draw_sketch(
         abs_sketch[:,1] -= ymin
         abs_sketch = normalize_to_scale_customized(
             abs_sketch, is_absolute=True, scale_factor=max_dim-2*margin)
+        if abs_sketch is None:
+            return None
         abs_sketch[:,:2] += margin # pads margin px to top and left sides
     
     for i in range(1, abs_sketch.shape[0]):

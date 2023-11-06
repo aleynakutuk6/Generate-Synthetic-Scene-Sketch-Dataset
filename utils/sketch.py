@@ -60,8 +60,11 @@ def normalize_to_scale_customized(
     if is_absolute: bounds = get_absolute_bounds_customized(sketch)
     else: bounds = get_relative_bounds_customized(sketch)  
     max_dimension = max(bounds[2] - bounds[0], bounds[3] - bounds[1])
-    sketch[:, 0:2] = (sketch[:, 0:2] * scale_factor) / max_dimension
-    return sketch
+    if max_dimension <= 0.0:
+        return None
+    else:
+        sketch[:, 0:2] = (sketch[:, 0:2] * scale_factor) / max_dimension
+        return sketch
     
     
 def relative_to_absolute_customized(sketch: np.ndarray) -> np.ndarray:

@@ -103,19 +103,10 @@ def should_keep_object(size, obj, hps, meta):
     _, _, w, h = obj['bbox']
     W, H = size
     box_area = (w * h) / (W * H)
-    print("w {} h {}".format(w,h))
-    print("W {} H {}".format(W,H))
-    print("box_area", box_area)
     box_ok = box_area > hps['min_object_size']
-    print("obj['category_id']", obj['category_id'])
-    print(meta['obj_ID_to_name'])
     object_name = meta['obj_ID_to_name'][str(obj['category_id'])]
-    print("object name", object_name)
     category_ok = object_name in meta['concrete_objs'] or object_name in meta['allowed_materials'] or object_name in meta['fully_excluded_objs']
     is_not_other = object_name != 'other'
-    print("box_ok", box_ok)
-    print("category_ok", category_ok)
-    print("is_not_other", is_not_other)
     return box_ok and category_ok and is_not_other
 
 
