@@ -1,44 +1,12 @@
-# Copyright 2019 The Magenta Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""SketchRNN data loading and image manipulation utilities."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import random
-
+import copy
+import math
 import numpy as np
-import tensorflow as tf
-import os
-import svgwrite
-from svglib.svglib import svg2rlg
-from reportlab.graphics import renderPM
-
-from utils import skt_tools
-
-########## New Functions Starts ##################################
 
 from rdp import rdp
 
 
-def get_relative_bounds_customized(data: np.ndarray) -> list:
-    min_x = 10000
-    max_x = -10000
-    min_y = 10000
-    max_y = -10000
+def get_relative_bounds(data: np.ndarray) -> list:
+    min_x, max_x, min_y, max_y = 10000000, 0, 10000000, 0
     abs_x, abs_y = 0, 0
     
     for i in range(data.shape[0]):
@@ -52,36 +20,10 @@ def get_relative_bounds_customized(data: np.ndarray) -> list:
         max_y = max(max_y, abs_y)
 
     return min_x, min_y, max_x, max_y
-    
-    
-def normalize_to_scale_customized(
-    sketch: np.ndarray, is_absolute: bool=False, scale_factor: float=1.0) -> np.ndarray:
-    
-    if is_absolute: bounds = get_absolute_bounds_customized(sketch)
-    else: bounds = get_relative_bounds_customized(sketch)  
-    max_dimension = max(bounds[2] - bounds[0], bounds[3] - bounds[1])
-    if max_dimension <= 0.0:
-        return None
-    else:
-        sketch[:, 0:2] = (sketch[:, 0:2] * scale_factor) / max_dimension
-        return sketch
-    
-    
-def relative_to_absolute_customized(sketch: np.ndarray) -> np.ndarray:
-    absolute_sketch = np.zeros_like(sketch)
-    absolute_sketch[0, :] = sketch[0, :]
-    for i in range(1, sketch.shape[0]):
-        absolute_sketch[i, 0] = absolute_sketch[i-1, 0] + sketch[i, 0]
-        absolute_sketch[i, 1] = absolute_sketch[i-1, 1] + sketch[i, 1]
-        absolute_sketch[i, 2:] = sketch[i, 2:]
-    return absolute_sketch
-    
 
-def get_absolute_bounds_customized(data: np.ndarray) -> list:
-    min_x = 10000
-    max_x = -10000
-    min_y = 10000
-    max_y = -10000
+
+def get_absolute_bounds(data: np.ndarray) -> list:
+    min_x, max_x, min_y, max_y = 10000000, 0, 10000000, 0
     
     for i in range(data.shape[0]):
         x = float(data[i, 0])
@@ -94,119 +36,181 @@ def get_absolute_bounds_customized(data: np.ndarray) -> list:
     return min_x, min_y, max_x, max_y
 
 
-def apply_RDP(data):
-    # function takes stroke-3 format in relative coordinates
-    try:
-        los = strokes_to_lines(data)
-        new_lines = []
-        for stroke in los:
-            simplified_stroke = rdp(stroke, epsilon=2.0)
-            if len(simplified_stroke) > 1:
-                new_lines.append(simplified_stroke)
-        simplified_sketch = lines_to_strokes(new_lines)
-
-        return simplified_sketch
-
-    except Exception as e:
-        print('Error encountered: {} - {}'.format(type(e), e))
-        raise
+def relative_to_absolute(sketch: np.ndarray) -> np.ndarray:
+    absolute_sketch = np.zeros_like(sketch)
+    absolute_sketch[0, :] = sketch[0, :]
+    for i in range(1, sketch.shape[0]):
+        absolute_sketch[i, 0] = absolute_sketch[i-1, 0] + sketch[i, 0]
+        absolute_sketch[i, 1] = absolute_sketch[i-1, 1] + sketch[i, 1]
+        absolute_sketch[i, 2:] = sketch[i, 2:]
+    return absolute_sketch
 
 
-def normalize(data, is_abs=False):
+def absolute_to_relative(sketch: np.ndarray, start_from_zero: bool=True) -> np.ndarray:
+    """ returns a relative sketch with the start point as [0, 0] """
+    relative_sketch = np.zeros_like(sketch)
+    for i in range(1, sketch.shape[0]):
+        relative_sketch[i, :2] = sketch[i, :2] - sketch[i-1, :2]
+        relative_sketch[i, 2:] = sketch[i, 2:]
+    if not start_from_zero:
+        relative_sketch[0, :2] = sketch[0, :2]
+    return relative_sketch
 
-    if not is_abs:
-        min_x, min_y, max_x, max_y = get_relative_bounds_customized(data)
+
+def stroke3_to_strokelist(sketch: np.ndarray, is_absolute: bool=False) -> list:
+    """ Makes conversion:
+    - From: stroke-3 format 
+    - To: [[[x1, y1], [x2, y2], ...], [[x3, y3], [x4, y4], ...], ...]
+    """
+    if not is_absolute:
+        abs_sketch = relative_to_absolute(copy.deepcopy(sketch))
     else:
-        min_x, min_y, max_x, max_y = get_absolute_bounds_customized(data)
-    max_dim = max([max_x - min_x, max_y - min_y, 1])
-    data = data.astype(np.float32)
-    data[:, :2] /= max_dim
-
-    return data
+        abs_sketch = sketch
     
-####################################################################
-
-def get_bounds(data, factor=1):
-    """Return bounds of data."""
-    min_x = 0
-    max_x = 0
-    min_y = 0
-    max_y = 0
-
-    abs_x = 0
-    abs_y = 0
-    for i in range(len(data)):
-        x = float(data[i, 0]) / factor
-        y = float(data[i, 1]) / factor
-        abs_x += x
-        abs_y += y
-        min_x = min(min_x, abs_x)
-        min_y = min(min_y, abs_y)
-        max_x = max(max_x, abs_x)
-        max_y = max(max_y, abs_y)
-
-    return (min_x, max_x, min_y, max_y)
+    strokes, points = [], []
+    for i in range(sketch.shape[0]):
+        points.append([abs_sketch[i, 0], abs_sketch[i, 1]])
+        if abs_sketch[i, 2] == 1:
+            strokes.append(points)
+            points = []
+    
+    return strokes
 
 
-def get_absolute_bounds(data, factor=1):
-    min_x = 0
-    max_x = 0
-    min_y = 0
-    max_y = 0
-    for i in range(len(data)):
-        x = float(data[i, 0]) / factor
-        y = float(data[i, 1]) / factor
-        min_x = min(min_x, x)
-        min_y = min(min_y, y)
-        max_x = max(max_x, x)
-        max_y = max(max_y, y)
-
-    return min_x, max_x, min_y, max_y
-
-
-def slerp(p0, p1, t):
-    """Spherical interpolation."""
-    omega = np.arccos(np.dot(p0 / np.linalg.norm(p0), p1 / np.linalg.norm(p1)))
-    so = np.sin(omega)
-    return np.sin((1.0 - t) * omega) / so * p0 + np.sin(t * omega) / so * p1
+def strokelist_to_stroke3(strokelist: list, return_is_absolute: bool=False) -> np.ndarray:
+    """ Makes conversion:
+    - From: [[[x1, y1], [x2, y2], ...], [[x3, y3], [x4, y4], ...], ...]
+    - To: stroke-3 format 
+    """
+    stroke3 = []
+    for stroke in strokelist:
+        for x, y in stroke:
+            stroke3.append([x, y, 0.0])
+        stroke3[-1][-1] = 1.0
+    
+    stroke3 = np.asarray(stroke3)
+    
+    if not return_is_absolute:
+        stroke3 = absolute_to_relative(stroke3)
+        
+    return stroke3
 
 
-def lerp(p0, p1, t):
-    """Linear interpolation."""
-    return (1.0 - t) * p0 + t * p1
+def sep_strokelist_to_stroke3(strokelist: list, return_is_absolute: bool=False) -> np.ndarray:
+    """ Makes conversion:
+    - From: [[[x1, x2, ...], [y1, y2, ...]], [[x3, x4, ...], [y3, y4, ...]], ...]
+    - To: stroke-3 format 
+    """
+    stroke3 = []
+    for stroke in strokelist:
+        for x, y in zip(stroke[0], stroke[1]):
+            stroke3.append([x, y, 0.0])
+        stroke3[-1][-1] = 1.0
+    
+    stroke3 = np.asarray(stroke3)
+    
+    if not return_is_absolute:
+        stroke3 = absolute_to_relative(stroke3)
+        
+    return stroke3
+        
+      
+def rotate_sketch(sketch: np.ndarray, angle: int, is_absolute: bool=False) -> np.ndarray:
+    assert angle >= 0 and angle <= 360
+    
+    def rotate(p, origin=(0, 0), degrees=0):
+        angle = np.deg2rad(degrees)
+        R = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle),  np.cos(angle)]])
+        o = np.atleast_2d(origin)
+        p = np.atleast_2d(p)
+        return np.squeeze((R @ (p.T-o.T) + o.T).T)
+    
+    if angle == 0 or angle == 360:
+        return sketch
+    elif angle < 0 or angle > 360:
+        angle = angle % 360
+    
+    if not is_absolute:
+        abs_sketch = relative_to_absolute(sketch)
+    else:
+        abs_sketch = copy.deepcopy(sketch)
+    
+    xmin, ymin, xmax, ymax = get_absolute_bounds(abs_sketch)
+    cx, cy = (xmax + xmin) / 2, -(ymax + ymin) / 2
+    
+    for i in range(abs_sketch.shape[0]):
+        ox, oy = abs_sketch[i, 0], - abs_sketch[i, 1] 
+        new_p = rotate([ox, oy], (cx, cy), degrees=angle)
+        abs_sketch[i, 0] = new_p[0]
+        abs_sketch[i, 1] = -new_p[1]
+    
+    xmin_new, ymin_new, xmax_new, ymax_new = get_absolute_bounds(abs_sketch)
+    # shift the sketch so that the center remains the same with the initial
+    for i in range(abs_sketch.shape[0]):
+        abs_sketch[i, 0] = abs_sketch[i, 0] - xmin_new
+        abs_sketch[i, 1] = abs_sketch[i, 1] - ymin_new
+
+    if not is_absolute:
+        return absolute_to_relative(abs_sketch)
+    else:
+        return abs_sketch
+    
 
 
-# A note on formats:
-# Sketches are encoded as a sequence of strokes. stroke-3 and stroke-5 are
-# different stroke encodings.
-#   stroke-3 uses 3-tuples, consisting of x-offset, y-offset, and a binary
-#       variable which is 1 if the pen is lifted between this position and
-#       the next, and 0 otherwise.
-#   stroke-5 consists of x-offset, y-offset, and p_1, p_2, p_3, a binary
-#   one-hot vector of 3 possible pen states: pen down, pen up, end of sketch.
-#   See section 3.1 of https://arxiv.org/abs/1704.03477 for more detail.
-# Sketch-RNN takes input in stroke-5 format, with sketches padded to a common
-# maximum length and prefixed by the special start token [0, 0, 1, 0, 0]
-# The QuickDraw dataset is stored using stroke-3.
-def strokes_to_lines(strokes):
-    """Convert stroke-3 format to polyline format."""
-    x = 0
-    y = 0
-    lines = []
-    line = []
-    for i in range(len(strokes)):
-        if strokes[i, 2] == 1:
-            x += float(strokes[i, 0])
-            y += float(strokes[i, 1])
-            line.append([x, y])
-            lines.append(line)
-            line = []
+def normalize_to_scale(
+    sketch: np.ndarray, is_absolute: bool=False, 
+    scale_factor: float=1.0, scale_ratio: float=None) -> np.ndarray:
+    
+    if is_absolute: bounds = get_absolute_bounds(sketch)
+    else: bounds = get_relative_bounds(sketch)  
+    max_dimension = max(bounds[2] - bounds[0], bounds[3] - bounds[1])
+    if scale_ratio is not None:
+        sketch[:, 0:2] = sketch[:, 0:2] * scale_ratio
+    else:
+        if max_dimension <= 0.0:
+            return None
         else:
-            x += float(strokes[i, 0])
-            y += float(strokes[i, 1])
-            line.append([x, y])
-    return lines
+            sketch[:, 0:2] = (sketch[:, 0:2] * scale_factor) / max_dimension
+    return sketch
 
+
+def normalize(sketch: np.ndarray, is_absolute: bool=False) -> np.ndarray:
+    return normalize_to_scale(sketch, is_absolute=is_absolute, scale_factor=1.0)
+
+
+def apply_RDP(sketch: np.ndarray, is_absolute: bool=False):
+    # function takes stroke-3 format in relative coordinates
+    
+    if is_absolute:
+        rel_sketch = absolute_to_relative(sketch, start_from_zero=False)
+    else:
+        rel_sketch = sketch
+    
+    los = stroke3_to_strokelist(rel_sketch)
+    new_lines = []
+    for stroke in los:
+        simplified_stroke = rdp(stroke, epsilon=2.0)
+        if len(simplified_stroke) > 1:
+            new_lines.append(simplified_stroke)
+    
+    simplified_sketch = strokelist_to_stroke3(new_lines, return_is_absolute=is_absolute)
+    return simplified_sketch
+
+
+def split_scene_to_parts(scene: np.ndarray, split_inds: np.ndarray) -> list:
+    # function takes the scene as stroke-3 format in relative coordinates
+    # split_inds as an np.ndarray of part begin indices
+    
+    assert len(split_inds.shape) == 1 and len(scene.shape) == 2
+    
+    obj_sketches = []
+    for b in range(split_inds.shape[0]):
+        start = int(split_inds[b])
+        end = int(split_inds[b + 1]) if b != split_inds.shape[0] - 1 else int(scene.shape[0])
+        obj_sketches.append(scene[start:end, :])
+        
+    return obj_sketches
+    
 
 def lines_to_strokes(lines):
     """Convert polyline format to stroke-3 format."""
@@ -220,291 +224,3 @@ def lines_to_strokes(lines):
     strokes = np.array(strokes)
     strokes[1:, 0:2] -= strokes[:-1, 0:2]
     return strokes[1:, :]
-
-
-def augment_strokes(strokes, prob=0.0):
-    """Perform data augmentation by randomly dropping out strokes."""
-    # drop each point within a line segments with a probability of prob
-    # note that the logic in the loop prevents points at the ends to be dropped.
-    result = []
-    prev_stroke = [0, 0, 1]
-    count = 0
-    stroke = [0, 0, 1]  # Added to be safe.
-    for i in range(len(strokes)):
-        candidate = [strokes[i][0], strokes[i][1], strokes[i][2]]
-        if candidate[2] == 1 or prev_stroke[2] == 1:
-            count = 0
-        else:
-            count += 1
-        urnd = np.random.rand()  # uniform random variable
-        if candidate[2] == 0 and prev_stroke[2] == 0 and count > 2 and urnd < prob:
-            stroke[0] += candidate[0]
-            stroke[1] += candidate[1]
-        else:
-            stroke = candidate
-            prev_stroke = stroke
-            result.append(stroke)
-    return np.array(result)
-
-
-def scale_bound(stroke, average_dimension=10.0):
-    """Scale an entire image to be less than a certain size."""
-    # stroke is a numpy array of [dx, dy, pstate], average_dimension is a float.
-    # modifies stroke directly.
-    bounds = get_bounds(stroke, 1)
-    max_dimension = max(bounds[1] - bounds[0], bounds[3] - bounds[2])
-    stroke[:, 0:2] /= (max_dimension / average_dimension)
-
-
-def to_binary_stroke5(s):
-    s = np.array(s, dtype=np.float32)
-    one_hot = np.argmax(s[:, 2:], axis=-1)
-    s[:, 2:] = 0
-    s[range(one_hot.shape[0]), one_hot + 2] = 1.
-    return s
-
-
-def convert_to_absolute(sketch):
-    absolute_sketch = np.zeros_like(sketch)
-    absolute_sketch[0] = sketch[0]
-    for i, (prev, new, orig) in enumerate(zip(absolute_sketch, absolute_sketch[1:], sketch[1:])):
-        new[:2] = prev[:2] + orig[:2]
-        new[2:] = orig[2:]
-    return absolute_sketch
-
-
-def to_relative(sketch, factor=1):
-    relative_sketch = np.zeros_like(sketch)
-    relative_sketch[0] = sketch[0]
-    relative_sketch[0, :2] = sketch[0, :2] * factor
-    for i, (prev_orig, new, orig) in enumerate(zip(sketch, relative_sketch[1:], sketch[1:])):
-        new[:2] = (orig[:2] - prev_orig[:2]) * factor
-        new[2:] = orig[2:]
-    return relative_sketch
-
-
-def list_to_relative(sketches):
-    relative_sketches = []
-    for s in sketches:
-        relative_sketches.append(to_relative(s))
-    return relative_sketches
-
-
-def to_normal_strokes(big_stroke):
-    """Convert from stroke-5 format (from sketch-rnn paper) back to stroke-3."""
-    l = 0
-    for i in range(len(big_stroke)):
-        if np.argmax(big_stroke[i, :]) == 4:
-            l = i
-            break
-    if l == 0:
-        l = len(big_stroke)
-    result = np.zeros((l, 3))
-    result[:, 0:2] = big_stroke[0:l, 0:2]
-    result[:, 2] = big_stroke[0:l, 3]
-    return result
-
-
-def predictions_to_sketches(preds):
-    return np.array([to_normal_strokes(to_binary_stroke5(p)) for p in preds])
-
-
-def clean_strokes(sample_strokes, factor=100):
-    """Cut irrelevant end points, scale to pixel space and store as integer."""
-    # Useful function for exporting data to .json format.
-    copy_stroke = []
-    added_final = False
-    for j in range(len(sample_strokes)):
-        finish_flag = int(sample_strokes[j][4])
-        if finish_flag == 0:
-            copy_stroke.append([
-                int(round(sample_strokes[j][0] * factor)),
-                int(round(sample_strokes[j][1] * factor)),
-                int(sample_strokes[j][2]),
-                int(sample_strokes[j][3]), finish_flag
-            ])
-        else:
-            copy_stroke.append([0, 0, 0, 0, 1])
-            added_final = True
-            break
-    if not added_final:
-        copy_stroke.append([0, 0, 0, 0, 1])
-    return copy_stroke
-
-
-def to_big_strokes(stroke, max_len=250):
-    """Converts from stroke-3 to stroke-5 format and pads to given length."""
-    # (But does not insert special start token).
-
-    result = np.zeros((max_len, 5), dtype=float)
-    l = len(stroke)
-    assert l <= max_len
-    result[0:l, 0:2] = stroke[:, 0:2]
-    result[0:l, 3] = stroke[:, 2]
-    result[0:l, 2] = 1 - result[0:l, 3]
-    result[l:, 4] = 1
-    return result
-
-
-def get_max_len(strokes):
-    """Return the maximum length of an array of strokes."""
-    max_len = 0
-    for stroke in strokes:
-        ml = len(stroke)
-        if ml > max_len:
-            max_len = ml
-    return max_len
-
-
-def draw_strokes(data, factor=0.01, svg_filename='/tmp/sketch_rnn/svg/sample.svg',
-                 png_filename='/tmp/sketch_rnn/svg/sample.png'):
-    min_x, max_x, min_y, max_y = get_bounds(data, factor)
-    dims = (50 + max_x - min_x, 50 + max_y - min_y)
-    dwg = svgwrite.Drawing(svg_filename, size=dims)
-    dwg.add(dwg.rect(insert=(0, 0), size=dims, fill='white'))
-    lift_pen = 1
-    abs_x = 25 - min_x
-    abs_y = 25 - min_y
-    p = "M%s,%s " % (abs_x, abs_y)
-    command = "m"
-    for i in range(len(data)):
-        if (lift_pen == 1):
-            command = "m"
-        elif (command != "l"):
-            command = "l"
-        else:
-            command = ""
-        x = float(data[i, 0]) / factor
-        y = float(data[i, 1]) / factor
-        lift_pen = data[i, 2]
-        p += command + str(x) + "," + str(y) + " "
-    the_color = "black"
-    stroke_width = 2.
-    dwg.add(dwg.path(p).stroke(the_color, stroke_width).fill("none"))
-    dwg.save()
-    drawing = svg2rlg(svg_filename)
-    renderPM.drawToFile(drawing, png_filename, fmt="PNG")
-
-
-def make_grid_svg(s_list, grid_space=2.25, grid_space_x=2.5):
-    def get_start_and_end(x):
-        x = np.array(x)
-        x = x[:, 0:2]
-        x_start = x[0]
-        x_end = x.sum(axis=0)
-        x = x.cumsum(axis=0)
-        x_max = x.max(axis=0)
-        x_min = x.min(axis=0)
-        center_loc = (x_max + x_min) * 0.5
-        return x_start - center_loc, x_end
-    x_pos = 0.0
-    y_pos = 0.0
-    result = []
-    for sample in s_list:
-        sketch = sample[0]
-        if len(sketch) == 0:
-            continue
-        sketch[0, -1] = 1
-        grid_loc = sample[1]
-        grid_y = grid_loc[0] * grid_space + grid_space * 0.5
-        grid_x = grid_loc[1] * grid_space_x + grid_space_x * 0.5
-        start_loc, delta_pos = get_start_and_end(sketch)
-
-        loc_x = start_loc[0]
-        loc_y = start_loc[1]
-        new_x_pos = grid_x + loc_x
-        new_y_pos = grid_y + loc_y
-        result.append([new_x_pos - x_pos, new_y_pos - y_pos, 0])
-
-        result += sketch.tolist()
-        if result[-1][2] == 1:
-            result[-2][2] = 0
-        else:
-            result[-1][2] = 1
-        x_pos = new_x_pos + delta_pos[0]
-        y_pos = new_y_pos + delta_pos[1]
-    return np.array(result)
-
-
-def build_interlaced_grid_list(targets, preds, width=8):
-    grid_list = []
-    current_sketch = 0
-    for i in range(0, width, 2):
-        for j in range(width):
-            grid_list.append([targets[current_sketch], [i, j]])
-            try:
-                grid_list.append([preds[current_sketch], [i + 1, j]])
-            except:
-                pass
-            current_sketch += 1
-    return grid_list
-
-
-def build_interlaced_grid_list_3_lines(a, b, c, width=9):
-    grid_list = []
-    current_sketch = 0
-    for i in range(0, width, 3):
-        for j in range(width):
-            grid_list.append([a[current_sketch], [i, j]])
-            try:
-                grid_list.append([b[current_sketch], [i + 1, j]])
-                grid_list.append([c[current_sketch], [i + 2, j]])
-            except:
-                pass
-            current_sketch += 1
-    return grid_list
-
-
-def build_grid_list(sketches, width=8):
-    grid_list = []
-    current_sketch = 0
-    for i in range(0, width):
-        for j in range(width):
-            grid_list.append([sketches[current_sketch], [i, j]])
-            current_sketch += 1
-    return grid_list
-
-
-def composition_to_lines(sketches, sketch_sizes, sketch_positions, scale=1.0):
-    """
-    convert strokes3 to polyline format ie. absolute x-y coordinates
-    note: the sketch can be negative
-    :param strokes: stroke3, Nx3
-    :param scale: scale factor applied on stroke3
-    :param start_from_origin: sketch starts from [0,0] if True
-    :return: list of strokes, each stroke has format Nx2
-    """
-    x = 0
-    y = 0
-    lines = []
-    for sketch, size, pos in zip(sketches, sketch_sizes, sketch_positions):
-        position = np.array(pos) * scale
-        x, y = position
-        line = [position]
-        for i in range(len(sketch)):
-            x_, y_ = sketch[i, :2] * scale * (size + .1)
-            x += x_
-            y += y_
-            line.append([x, y])
-            if sketch[i, 2] == 1:
-                line_array = np.array(line) + np.zeros((1, 2), dtype=np.uint8)
-                lines.append(line_array)
-                line = []
-        if line:
-            line_array = np.array(line) + np.zeros((1, 2), dtype=np.uint8)
-            lines.append(line_array)
-    if lines == []:
-        line_array = [np.zeros((1, 2), dtype=np.uint8)]
-        lines.append(line_array)
-    return lines
-
-
-def convert_sketch_from_stroke3_to_image(sketch, size):
-    image_size = (size, size)
-    lines = skt_tools.strokes_to_lines(sketch, scale=size / 2, start_from_origin=True)
-    lines = skt_tools.centralise_lines(lines, image_size)
-    img = skt_tools.draw_lines(
-        lines, image_shape=image_size, background_pixel=1.0,
-        colour=False, line_width=2, typing='float')
-    img = np.expand_dims(img, axis=-1)
-    return img

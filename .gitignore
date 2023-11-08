@@ -7,3 +7,5 @@ qd_coco_files
 custom-dataset
 json_files
 QD_sketches
+scene_coords
+CBSC-processed

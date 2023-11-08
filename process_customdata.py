@@ -15,21 +15,6 @@ from generate_scene import *
 from Sketchformer.sketchformer_api import *
 
 #########################################################
-"""
-def scale_bboxes(sketch_bboxes, image_size, margin):
-    
-    xmin, ymin = sketch_bboxes[..., :2].min(axis=0)
-    xmax, ymax = sketch_bboxes[..., 2:].max(axis=0)
-    sketch_bboxes[:,0] -= xmin 
-    sketch_bboxes[:,1] -= ymin 
-    sketch_bboxes[:,2] -= xmin
-    sketch_bboxes[:,3] -= ymin 
-    w, h = (xmax - xmin), (ymax - ymin)
-    rate = (image_size - (2*margin)) / max(w, h)
-    normalized_bboxes = (rate * sketch_bboxes) + margin
-    
-    return normalized_bboxes
-"""
 
 def default_hparams():
     hps = HParams(
@@ -98,8 +83,8 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
             sketch = lines_to_strokes(lines)
             
             sketch_temp = copy.deepcopy(sketch)
-            abs_sketch = relative_to_absolute_customized(sketch_temp)
-            min_x, min_y, max_x, max_y = get_absolute_bounds_customized(abs_sketch)
+            abs_sketch = relative_to_absolute(sketch_temp)
+            min_x, min_y, max_x, max_y = get_absolute_bounds(abs_sketch)
             
             sketch_bboxes.append([min_x, min_y, max_x, max_y])
             
@@ -136,9 +121,9 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
             
             if hps["save_embeds"]:
                 sketch_temp = copy.deepcopy(np.asarray(sketch_temp))
-                abs_sketch = relative_to_absolute_customized(sketch_temp)
+                abs_sketch = relative_to_absolute(sketch_temp)
                 
-                min_x, min_y, max_x, max_y = get_absolute_bounds_customized(abs_sketch)
+                min_x, min_y, max_x, max_y = get_absolute_bounds(abs_sketch)
                 
                 scale = hps['scale_factor'] / max([max_x - min_x, max_y - min_y, 1])
                 # align the drawing to the top-left corner, to have minimum values of 0.
@@ -148,7 +133,7 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
                 # uniformly scale the drawing, to have a maximum value of 255.
                 abs_sketch[:, :2] *= scale
                 
-                sketch_relative = to_relative(abs_sketch)
+                sketch_relative = absolute_to_relative(abs_sketch)
                 sketch_normalized = normalize(sketch_relative)
                 X_test.append(sketch_normalized)
         
@@ -164,7 +149,7 @@ def load_custom_data(data_filename, target_dir, qd_meta, hps):
         sketch_bboxes = np.insert(sketch_bboxes, 0, [0.0, 0.0, img_w, img_h], axis=0)
             
         img_path = os.path.join(save_dir, "0_scene.png")
-        raster_scene = draw_sketch(copy.deepcopy(scene_strokes), img_path, is_absolute=False, white_bg=True, keep_size=True, max_dim=scene_size)
+        raster_scene = draw_sketch(copy.deepcopy(scene_strokes), img_path, white_bg=True, keep_size=True, max_dim=scene_size)
         
         if hps["save_embeds"]:
             object_embeds, predicted, class_scores = retrieve_embedding_and_classes_from_batch(model, X_test)

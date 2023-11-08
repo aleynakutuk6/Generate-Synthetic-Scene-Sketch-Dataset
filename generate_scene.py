@@ -45,37 +45,6 @@ def simplification(data, scale_factor=255.0):
     simplified = normalize(sketch_rdp)
 
     return simplified
-
-
-def apply_RDP(data):
-    # function takes stroke-3 format in relative coordinates
-    try:
-        los = strokes_to_lines(data)
-        new_lines = []
-        for stroke in los:
-            simplified_stroke = rdp(stroke, epsilon=2.0)
-            if len(simplified_stroke) > 1:
-                new_lines.append(simplified_stroke)
-        simplified_sketch = lines_to_strokes(new_lines)
-
-        return simplified_sketch
-
-    except Exception as e:
-        print('Error encountered: {} - {}'.format(type(e), e))
-        raise
-
-
-def normalize(data, is_abs=False):
-
-    if not is_abs:
-        min_x, max_x, min_y, max_y = get_bounds(data)
-    else:
-        min_x, max_x, min_y, max_y = get_absolute_bounds(data)
-    max_dim = max([max_x - min_x, max_y - min_y, 1])
-    data = data.astype(np.float32)
-    data[:, :2] /= max_dim
-
-    return data
   
 
 def read_quickdraw_npz(filepath: str, partition: str=None, idx=None):
@@ -139,7 +108,7 @@ def generate_scene_from_single_img(d):
         # Identity Information
         sketch_temp = obj["stroke-3"]
         sketch = copy.deepcopy(sketch_temp)
-        sketch = relative_to_absolute_customized(sketch)
+        sketch = relative_to_absolute(sketch)
 
         x_vals = sketch[:, 0]
         y_vals = sketch[:, 1]
@@ -160,7 +129,7 @@ def generate_scene_from_single_img(d):
         sketch[:, 0] += x_c_i - x_c_j
         sketch[:, 1] += y_c_i - y_c_j
         
-        xmin, ymin, xmax, ymax = get_absolute_bounds_customized(sketch)
+        xmin, ymin, xmax, ymax = get_absolute_bounds(sketch)
         
         scene_sketch.extend(sketch.tolist())
         num_sk_strokes = int(np.sum(sketch[..., -1] == 1))
@@ -172,14 +141,3 @@ def generate_scene_from_single_img(d):
                        "sketch_bboxes": sketch_bboxes}
     
     return generated_scene
-
-
-
-"""
-img = {"data": {"image_id": 252219, "objects": [{"qd_cls": "umbrella", "qd_sketch_id": 403, "x": 560.73, "y": 90.25, "h": 67.32, "w": 79.27}, 
-                                                {"qd_cls": "cup", "qd_sketch_id": 581, "x": 345.13, "y": 226.41, "h": 22.14, "w": 11.06}, 
-                                                {"qd_cls": "traffic light", "qd_sketch_id": 246, "x": 337.06, "y": 44.11, "h": 57.17, "w": 61.36}]}, "label": 1}
-
-generated_scene = generate_scene_from_single_img(img)
-viz_given_scene(generated_scene, "252219.png")
-"""
