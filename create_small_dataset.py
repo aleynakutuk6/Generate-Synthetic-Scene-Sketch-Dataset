@@ -28,9 +28,9 @@ valid_image_ids = os.listdir(valid_basename)
 test_image_ids = os.listdir(test_basename)
 
 # Divide train - val - test datasets with split ratio 60 - 10 - 30
-train_size = int(len(train_image_ids) * 10 / 100)
-val_size = int(len(valid_image_ids) * 10 / 100)
-test_size = int(len(test_image_ids) * 10 / 100)
+train_size = int(len(train_image_ids) * 1 / 100)
+val_size = int(len(valid_image_ids) * 1 / 100)
+test_size = int(len(test_image_ids) * 1 / 100)
 
 print("train size:", train_size)
 print("val size:", val_size)
@@ -45,7 +45,7 @@ test_n_images, valid_n_images, train_n_images = len(test_image_ids), len(valid_i
 
 # Create coco-records-small directory and copy selected subset of the main dataset
 
-target_dir = 'coco-records-small'
+target_dir = 'coco-records-very-small'
 target_train_basename = os.path.join(target_dir, "train")
 target_valid_basename = os.path.join(target_dir, "valid")
 target_test_basename = os.path.join(target_dir, "test")
