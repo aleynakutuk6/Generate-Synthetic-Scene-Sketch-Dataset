@@ -217,13 +217,14 @@ def main():
     # Parsing arguments
     parser = argparse.ArgumentParser(
         description='Prepare CBSC dataset for the network')
-    parser.add_argument('--dataset-dir', default='../CBSC_Data/test')
+    parser.add_argument('--dataset-dir', default='../CBSC_Data')
     parser.add_argument('--target-dir', default='CBSC-processed')
     parser.add_argument('--hparams', type=str)
 
     args = parser.parse_args()
     
     test_basename = os.path.join(args.target_dir, "test")
+    valid_basename = os.path.join(args.target_dir, "validation")
     
     if not os.path.isdir(args.target_dir):
         os.mkdir(args.target_dir)
@@ -231,13 +232,19 @@ def main():
     if not os.path.isdir(test_basename):
         os.mkdir(test_basename)
         
+    if not os.path.isdir(valid_basename):
+        os.mkdir(valid_basename)
+        
     hps = default_hparams()
     if args.hparams is not None:
         hps = hps.parse(args.hparams)
     hps = dict(hps.values())
         
-    test_n_samples = load_CBSC_data(args.dataset_dir, test_basename, hps, rdp_per_obj=True)
-    print("Saved {} images for test set".format(test_n_samples))
+    # test_n_samples = load_CBSC_data(os.path.join(args.dataset_dir, "test"), test_basename, hps, rdp_per_obj=True)
+    # print("Saved {} images for test set".format(test_n_samples))
+    
+    valid_n_samples = load_CBSC_data(os.path.join(args.dataset_dir, "validation"), valid_basename, hps, rdp_per_obj=True)
+    print("Saved {} images for validation set".format(valid_n_samples))
         
         
 if __name__ == '__main__':
