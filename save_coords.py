@@ -43,7 +43,7 @@ def scale_bboxes(bboxes, img_w, img_h, new_scene_size):
     return bboxes
 
 
-def save_coord_info(data_dir, set_type, target_dir, qd_classes, scene_size=480, sketch_size=224):
+def save_coord_info(data_dir, set_type, target_dir, qd_classes, class_files, scene_size=480, sketch_size=224):
     
     save_dir = os.path.join(target_dir, set_type)
     if not os.path.isdir(save_dir):
@@ -74,6 +74,8 @@ def save_coord_info(data_dir, set_type, target_dir, qd_classes, scene_size=480, 
         
         qd_class_ids = data_info["qd_class_ids"]
         coords = data_info["sketch_bboxes"]
+        sample_qd_ids = data_info["sample_ids"]
+        """
         old_raster_sketches = data_info["raster_sketches"]
         
         raster_sketches = [] 
@@ -82,6 +84,7 @@ def save_coord_info(data_dir, set_type, target_dir, qd_classes, scene_size=480, 
             raster_sketches.append(new_sketch_img)
         
         raster_sketches = np.asarray(raster_sketches)
+        """
         
         orig_coords = copy.deepcopy(coords)
         coords = torch.Tensor(coords)
@@ -99,20 +102,30 @@ def save_coord_info(data_dir, set_type, target_dir, qd_classes, scene_size=480, 
             qd_class = qd_classes[class_id]
             save_name = qd_class + "_" + str(img_id) + "_" + str(idx+1)
             
-            vector_path = os.path.join(vectors_dir, save_name + '.json')
-            vector_dict = {"img_w": img_w, "img_h": img_h, "coord": orig_coords[idx+1]}
-            
-            with open(vector_path, "w") as f:
-                json.dump(vector_dict, f)
-            
+            # save sketch coord image
             image_path = os.path.join(images_dir, save_name + '.png')
             coords_img = raster_coords[idx+1].astype(np.uint8)
             cv2.imwrite(image_path, coords_img)
             
+            # sketch is used to be saved using raster_sketches
+            """
             sketches_path = os.path.join(sketches_dir, save_name + '.png')
             sketches_img = raster_sketches[idx].astype(np.uint8)
             cv2.imwrite(sketches_path, sketches_img)
-        
+            """
+            # save sketch image using stroke-3 format
+            
+            qd_data = read_quickdraw_npz(class_files[qd_class], partition=set_type, idx=sample_qd_ids[idx])
+            qd_data = np.asarray(qd_data)
+            sketches_path = os.path.join(sketches_dir, save_name + '.png')
+            sketches_img = draw_sketch(qd_data, sketches_path, white_bg=True, max_dim=sketch_size)
+            
+            vector_path = os.path.join(vectors_dir, save_name + '.json')
+            vector_dict = {"img_w": img_w, "img_h": img_h, "coord": orig_coords[idx+1], "stroke": qd_data.tolist()}
+            
+            with open(vector_path, "w") as f:
+                json.dump(vector_dict, f)
+                
             res_dict["data"].append({
                 "class_id": class_id,
                 "class_name": qd_class,
@@ -127,7 +140,7 @@ def save_coord_info(data_dir, set_type, target_dir, qd_classes, scene_size=480, 
 
 
 data_dir = 'coco-records-latest'
-target_dir = 'scene_coords'
+target_dir = 'scene_coords-new'
 
 if not os.path.isdir(target_dir):
     os.mkdir(target_dir)
@@ -136,8 +149,14 @@ f = open('Sketchformer/prep_data/quickdraw/list_quickdraw.txt', 'r')
 lines = f.readlines()
 qd_classes = [cls.replace("\n", "") for cls in lines]
 
+qd_dataset_dir = '/datasets/quickdraw/sketchrnn/npz'
+
+class_files = {}
+for class_name in qd_classes:
+    class_files[class_name] = "{}/{}.npz".format(qd_dataset_dir, class_name)
     
-# save_coord_info(data_dir, 'valid', target_dir, qd_classes)
-# save_coord_info(data_dir, 'test', target_dir, qd_classes)
-save_coord_info(data_dir, 'train', target_dir, qd_classes)
+    
+# save_coord_info(data_dir, 'valid', target_dir, qd_classes, class_files)
+save_coord_info(data_dir, 'test', target_dir, qd_classes, class_files)
+save_coord_info(data_dir, 'train', target_dir, qd_classes, class_files)
 

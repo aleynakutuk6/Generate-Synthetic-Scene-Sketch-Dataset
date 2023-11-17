@@ -5,6 +5,7 @@ import json
 import argparse
 import copy
 import random
+import sys         
 
 from PIL import Image
 from tqdm import tqdm
@@ -12,6 +13,8 @@ from utils.sketch import *
 from utils.hparams import *
 from draw_scene import *
 from generate_scene import *
+
+sys.path.append('/userfiles/akutuk21') 
 from Sketchformer.sketchformer_api import *
 
 #########################################################
@@ -132,7 +135,7 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=False, rdp_per_scene=Fal
                         begins[i] = end_maps[begins[i] - 1] + 1
     
                 
-                scene_strokes = np.asarray(sketch)
+                scene_strokes = sketch
                 img_path = os.path.join(save_dir, "0_scene.png")
                 scene_size = max(img_h, img_w)
                 raster_scene = draw_sketch(copy.deepcopy(scene_strokes), img_path, is_absolute=True, white_bg=True, keep_size=True, max_dim=scene_size)
@@ -171,7 +174,7 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=False, rdp_per_scene=Fal
 
 def read_object_order(position_file):
     
-    with open("Sketchformer/prep_data/quickdraw/list_quickdraw.txt", "r") as f:
+    with open("/userfiles/akutuk21/Sketchformer/prep_data/quickdraw/list_quickdraw.txt", "r") as f:
         qd_lines = f.readlines()
         
     qd_classes = {}
@@ -217,8 +220,8 @@ def main():
     # Parsing arguments
     parser = argparse.ArgumentParser(
         description='Prepare CBSC dataset for the network')
-    parser.add_argument('--dataset-dir', default='../CBSC_Data')
-    parser.add_argument('--target-dir', default='CBSC-processed')
+    parser.add_argument('--dataset-dir', default='/userfiles/akutuk21/CBSC_Data')
+    parser.add_argument('--target-dir', default='CBSC-processed-new')
     parser.add_argument('--hparams', type=str)
 
     args = parser.parse_args()

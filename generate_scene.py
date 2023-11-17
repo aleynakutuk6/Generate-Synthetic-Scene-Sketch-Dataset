@@ -4,6 +4,7 @@ from rdp import rdp
 from tqdm import tqdm
 from draw_scene import *
 
+import os
 import numpy as np
 import copy
 
