@@ -22,7 +22,7 @@
 #
 # -= Resources =-
 #
-#SBATCH --job-name=g_cbsc
+#SBATCH --job-name=sk-cbsc-1
 #SBATCH --nodes 1 
 #SBATCH --mem=20G 
 #SBATCH --partition ai 
@@ -31,7 +31,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint=tesla_t4 
 #SBATCH --time=120:00:00 
-#SBATCH --output=log_files/g_cbsc.log
+#SBATCH --output=log_files/eval-sk-cbsc-1.log
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=akutuk21@ku.edu.tr
 
@@ -62,4 +62,4 @@ echo
 ##################### !!! DO NOT EDIT ABOVE THIS LINE !!! ######################
 ################################################################################
 
-python3 process_cbsc.py
+python3 baseline_sketchformer.py
