@@ -26,7 +26,7 @@ def save_class_scores(root_dir, qd_classes, orig_data_dir):
                 class_name, img_id, rest = filename.split("_")
                 inst_id = rest.split(".")[0]
                 class_id = qd_classes.index(class_name)
-                
+                        
                 path = os.path.join(file_path, filename) 
                 
                 with open(path, "r") as f:
@@ -104,23 +104,27 @@ orig_data_dir = "CBSC-processed"
 print("Dataset {} paths are extracting now...".format(cbsc_root_dir))
 save_class_scores(cbsc_root_dir, qd_classes, orig_data_dir)
 
+
 scene_coords_root_dir = "scene_coords-new"
 orig_data_dir = "coco-records-latest"
 print("Dataset {} paths are extracting now...".format(scene_coords_root_dir))
 save_class_scores(scene_coords_root_dir, qd_classes, orig_data_dir)
+"""
 
 
+"""
 # Save paths info
 
 cbsc_root_dir = "cbsc-sketches"
 print("Dataset {} paths are extracting now...".format(cbsc_root_dir))
 save_paths(cbsc_root_dir, qd_classes)
 
+
 scene_coords_root_dir = "scene_coords-new"
 print("Dataset {} paths are extracting now...".format(scene_coords_root_dir))
 save_paths(scene_coords_root_dir, qd_classes)
-
 """
+
 
 
 

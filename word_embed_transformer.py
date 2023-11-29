@@ -124,6 +124,48 @@ def save_word_embeds(uniq_classes, save_filepath):
 
     with open(save_filepath, "w") as f:
         json.dump(QD_word_embeds, f)
+
+
+def save_cbsc_word_embeds(root_dir, save_filepath, meta_data_path):
+    
+    class_ids = set()
+    for set_type in os.listdir(root_dir):
+        
+        if set_type not in ["train", "valid", "test"]:
+            continue
+        
+        file_path = os.path.join(root_dir, set_type, "data_info.json")  
+        
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        
+        
+        for d in data["data"]:
+            class_id = d["class_id"]
+            class_ids.add(class_id)
+    
+    class_ids = list(class_ids)
+    
+    with open(meta_data_path) as f:
+        data = json.load(f)
+    
+    classes_to_idx = data['qd_classes_to_idx']
+    qd_classes = list(classes_to_idx.keys())
+    
+    uniq_classes = []
+    for cls_id in class_ids:
+        uniq_classes.append(qd_classes[cls_id])
+    
+    cbsc_word_embeds = {}
+    
+    labels = preprocess(uniq_classes)
+    model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+
+    for i, word in enumerate(labels):
+        cbsc_word_embeds[str(class_ids[i])] = model.encode(word).astype(float).tolist()
+
+    with open(save_filepath, "w") as f:
+        json.dump(cbsc_word_embeds, f)
         
 
 def get_uniq_classes(data_dir, data_type="qd"):
@@ -162,19 +204,26 @@ def save_sketchnet_metadata(data_dir, save_filename):
         
     with open(save_filename, "w") as f:
         json.dump(mapping_dict, f)
-        
+
+
+# Extract word embeddings for CBSC classes
+
+cbsc_save_filepath = "json_files/CBSC_word_embeds_with_transformer.json"
+cbsc_root_dir = "cbsc-sketches"
+meta_data_path = "/userfiles/akutuk21/coco-records-latest/qd_coco_meta.json"
+save_cbsc_word_embeds(cbsc_root_dir, cbsc_save_filepath, meta_data_path)     
 
 # Extract word embeddings for Quickdraw classes
 
 qd_save_filepath = "json_files/QD_word_embeds_with_transformer.json"
-data_path = "coco-records-small/qd_coco_meta.json"
+data_path = "/userfiles/akutuk21/coco-records-latest/qd_coco_meta.json"
 # uniq_classes = get_uniq_classes(data_path, "qd")
 # save_word_embeds(uniq_classes, qd_save_filepath)
 
 # Find embed similarity
 
-find_embed_similarity(qd_save_filepath, "qd")
-get_similar_ids("json_files/qd_embed_distances.npy", data_path, "qd")
+# find_embed_similarity(qd_save_filepath, "qd")
+# get_similar_ids("json_files/qd_embed_distances.npy", data_path, "qd")
 
 
 # Extract word embeddings for SketchNet classes

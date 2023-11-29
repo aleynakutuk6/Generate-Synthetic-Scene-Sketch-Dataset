@@ -141,7 +141,7 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
                 for idx, class_id in enumerate(obj_ids):
                     qd_class = obj_names[idx]
                     save_name = qd_class + "_" + str(inst) + "_" + str(idx+1)
-            
+                    
                     # save sketch coord image
                     image_path = os.path.join(images_dir, save_name + '.png')
                     coords_img = raster_coords[idx+1].astype(np.uint8)
@@ -158,7 +158,8 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
             
                     with open(vector_path, "w") as f:
                         json.dump(vector_dict, f)
-                
+                    
+                    
                     res_dict["data"].append({
                         "class_id": class_id,
                         "class_name": qd_class,
@@ -250,8 +251,8 @@ def main():
     test_n_samples = load_CBSC_data(os.path.join(args.dataset_dir, "test"), test_basename, hps, rdp_per_obj=True)
     print("Saved {} images for test set".format(test_n_samples))
     
-    # valid_n_samples = load_CBSC_data(os.path.join(args.dataset_dir, "validation"), valid_basename, hps, rdp_per_obj=True)
-    # print("Saved {} images for validation set".format(valid_n_samples))
+    valid_n_samples = load_CBSC_data(os.path.join(args.dataset_dir, "validation"), valid_basename, hps, rdp_per_obj=True)
+    print("Saved {} images for validation set".format(valid_n_samples))
         
         
 if __name__ == '__main__':
