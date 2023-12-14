@@ -1,5 +1,3 @@
-coco-records-latest
-coco-records-small
 log_files
 qd_coco_files
 custom-dataset
@@ -9,3 +7,13 @@ CBSC-processed
 cbsc-sketches
 scene_coords-new
 heatmaps_diff
+
+.ipynb_checkpoints
+*/.ipynb_checkpoints
+*/**/.ipynb_checkpoints
+**/.ipynb_checkpoints
+
+__pycache__
+*/__pycache__
+*/**/__pycache__
+**/__pycache__

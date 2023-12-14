@@ -44,7 +44,7 @@ def save_class_scores(root_dir, qd_classes, orig_data_dir):
                     json.dump(data, f)
               
 
-def save_paths(root_dir, qd_classes):
+def save_paths(root_dir, qd_classes, additional_classes=None):
     
     for set_type in os.listdir(root_dir):
         
@@ -62,9 +62,14 @@ def save_paths(root_dir, qd_classes):
             file_path = os.path.join(folder_path, folder_name)   
             for filename in tqdm(os.listdir(file_path)):
                 
+                
                 class_name, img_id, rest = filename.split("_")
                 inst_id = rest.split(".")[0]
-                class_id = qd_classes.index(class_name)
+                
+                if class_name in qd_classes:
+                    class_id = qd_classes.index(class_name)
+                else:
+                    class_id = additional_classes[class_name]
                 
                 
                 if img_id not in paths_dict.keys():
@@ -96,6 +101,10 @@ f = open('/userfiles/akutuk21/Sketchformer/prep_data/quickdraw/list_quickdraw.tx
 lines = f.readlines()
 qd_classes = [cls.replace("\n", "") for cls in lines]
 
+
+
+            
+            
 """
 # Copy obj embeddings info to path_info json file
 
@@ -125,7 +134,12 @@ print("Dataset {} paths are extracting now...".format(scene_coords_root_dir))
 save_paths(scene_coords_root_dir, qd_classes)
 """
 
+custom_data_root_dir = "custom-dataset"
+with open(os.path.join(custom_data_root_dir, "external_classes_to_idx.json"), 'r') as f:
+    data = json.load(f)
 
+print("Dataset {} paths are extracting now...".format(custom_data_root_dir))
+save_paths(custom_data_root_dir, qd_classes, data["external_classes_to_idx"])
 
 
 

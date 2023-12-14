@@ -178,7 +178,7 @@ def normalize(sketch: np.ndarray, is_absolute: bool=False) -> np.ndarray:
     return normalize_to_scale(sketch, is_absolute=is_absolute, scale_factor=1.0)
 
 
-def apply_RDP(sketch: np.ndarray, is_absolute: bool=False):
+def apply_RDP(sketch: np.ndarray, is_absolute: bool=False, epsilon: float=2.0):
     # function takes stroke-3 format in relative coordinates
     
     if is_absolute:
@@ -189,7 +189,7 @@ def apply_RDP(sketch: np.ndarray, is_absolute: bool=False):
     los = stroke3_to_strokelist(rel_sketch)
     new_lines = []
     for stroke in los:
-        simplified_stroke = rdp(stroke, epsilon=2.0)
+        simplified_stroke = rdp(stroke, epsilon=epsilon)
         if len(simplified_stroke) > 1:
             new_lines.append(simplified_stroke)
     
