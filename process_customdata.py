@@ -149,11 +149,6 @@ def load_custom_data(data_filename, target_dir, metadata, hps):
     
     for img_id, scene_info in tqdm(data.items()):
         
-        paths_dict[img_id] = {"coord_img_paths": [], 
-                              "sketch_img_paths": [],
-                              "vector_img_paths": [],
-                              "class_ids": []}
-        
         if hps["save_embeds"]:
             X_test = []
                 
@@ -166,6 +161,7 @@ def load_custom_data(data_filename, target_dir, metadata, hps):
             drawing = sketch["drawing"]
             label = sketch["labels"]
             label = label.lower().strip()
+            
             if label == "incomplete":
                 continue
             label, sel_id = get_cls_info(label, metadata, external_classes_to_idx)
@@ -209,6 +205,13 @@ def load_custom_data(data_filename, target_dir, metadata, hps):
                 sketch_normalized = normalize(sketch_relative)
                 X_test.append(sketch_normalized)
         
+        if len(sketch_bboxes) == 0:
+            continue
+        
+        paths_dict[img_id] = {"coord_img_paths": [], 
+                              "sketch_img_paths": [],
+                              "vector_img_paths": [],
+                              "class_ids": []}
         if hps["save_embeds"]:
             object_embeds, predicted, class_scores = retrieve_embedding_and_classes_from_batch(model, X_test)
             object_embeds = object_embeds.tolist()
