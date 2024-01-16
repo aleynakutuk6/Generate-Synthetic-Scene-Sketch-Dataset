@@ -47,27 +47,27 @@ def pass_from_sketchformer(stroke, is_absolute=False):
 
 
 # using accuracy of matching classes
-def get_acc_per_img(data, root_path, folder_name, txt_name, is_absolute, topN=1):
+def get_acc_per_img(data, root_path, folder_name, txt_name, is_absolute=False, topN=1):
 
     found_cls = data["class_id"]
     data_path = data[f"{folder_name}_path"]
     
     f = open(txt_name, "a")
+        
+    with open(os.path.join(root_path, data_path), "r") as f2:
+        vector_info = json.load(f2)
+        
+    class_scores = vector_info["class_scores"]
     
-    if folder_name == "vectors":    
-        with open(os.path.join(root_path, data_path), "r") as f2:
-            vector_info = json.load(f2)
-        
-        sketch_stroke = np.asarray(vector_info["stroke"])
-        
-    elif folder_name == "strokes":
-        sketch_stroke = np.load(os.path.join(root_path, data_path))
-            
-    res_dict = pass_from_sketchformer(sketch_stroke, is_absolute=is_absolute)
-    class_scores = res_dict["class_scores"]
+    # if folder_name == "strokes":
+    #     sketch_stroke = np.load(os.path.join(root_path, data_path))
+    # res_dict = pass_from_sketchformer(sketch_stroke, is_absolute=is_absolute)
+    # class_scores = res_dict["class_scores"]
+    
+    # class_ids = class_ids_all[0][0:topN]
     
     class_ids_all = torch.argsort(torch.Tensor(class_scores), -1, descending=True)
-    class_ids = class_ids_all[0][0:topN]
+    class_ids = class_ids_all[0:topN]
         
     if found_cls in class_ids:
         acc = 1
@@ -77,21 +77,28 @@ def get_acc_per_img(data, root_path, folder_name, txt_name, is_absolute, topN=1)
     f.write("preds: {} gts: {} acc: {} \n".format(class_ids, found_cls, acc))
     f.close()
     
-    return acc
+    if found_cls > 344:
+        ignore = 1
+    else:
+        ignore = 0
+    return acc, ignore
     
 
 
 # using word embed distances
-def get_dist_per_img(data, root_path, folder_name, txt_name, is_absolute, topN=1):
+def get_dist_per_img(data, root_path, folder_name, txt_name, is_absolute=False, topN=1):
     
     with open("../generate_scene_dataset/json_files/QD_word_embeds_with_transformer.json", "r") as f:
         word_embeds = json.load(f)
         
     found_cls = data["class_id"]
+        
     data_path = data[f"{folder_name}_path"]
     
     f = open(txt_name, "a")
     
+    
+    """
     if folder_name == "vectors":    
         with open(os.path.join(root_path, data_path), "r") as f2:
             vector_info = json.load(f2)
@@ -103,9 +110,15 @@ def get_dist_per_img(data, root_path, folder_name, txt_name, is_absolute, topN=1
             
     res_dict = pass_from_sketchformer(sketch_stroke, is_absolute=is_absolute)
     class_scores = res_dict["class_scores"]
+    """
+    
+    with open(os.path.join(root_path, data_path), "r") as f2:
+        vector_info = json.load(f2)
+        
+    class_scores = vector_info["class_scores"]
     
     class_ids_all = torch.argsort(torch.Tensor(class_scores), -1, descending=True)
-    class_ids = class_ids_all[idx][0:topN]
+    class_ids = class_ids_all[0:topN]
         
     if found_cls not in class_ids:
         gt_embed = torch.Tensor(word_embeds[str(found_cls)])
@@ -122,7 +135,12 @@ def get_dist_per_img(data, root_path, folder_name, txt_name, is_absolute, topN=1
     f.write("preds: {} gts: {} dist: {} \n".format(class_ids, found_cls, dist))
     f.close()
     
-    return dist
+    if found_cls > 344:
+        ignore = 1
+    else:
+        ignore = 0
+        
+    return dist, ignore
     
 
 
@@ -131,13 +149,15 @@ def get_dist_per_img(data, root_path, folder_name, txt_name, is_absolute, topN=1
 synthetic_test = "../generate_scene_dataset/scene_coords-new/test"
 cbsc_test = "../generate_scene_dataset/cbsc-sketches/test"
 qd_test = "../generate_scene_dataset/QD_sketches/test"
+our_test = "../generate_scene_dataset/custom-dataset/test"
+
 
 # Set your hyperparameters
 
 topN = 1
 folder_name = "vectors" 
-is_absolute = True
-root_path = cbsc_test
+is_absolute = False
+root_path = our_test
 
 eval_relnet_with_embeds = False
 
@@ -168,13 +188,18 @@ with open(os.path.join(root_path, "data_info.json"), "r") as f:
 # Get the accuracy
 
 total_acc = 0
-total_ctr = len(data_info["data"])
+total_ctr = 0
 
 for idx, data in enumerate(tqdm(data_info["data"])):
     if eval_relnet_with_embeds:
-        total_acc += get_dist_per_img(data, root_path, folder_name, txt_name, is_absolute, topN)
+        acc, ignore = get_dist_per_img(data, root_path, folder_name, txt_name, is_absolute, topN)
+            
     else:
-        total_acc += get_acc_per_img(data, root_path, folder_name, txt_name, is_absolute, topN)
+        acc, ignore = get_acc_per_img(data, root_path, folder_name, txt_name, is_absolute, topN)
+    
+    if ignore == 0:
+        total_acc += acc
+        total_ctr += 1
 
 f = open(txt_name, "a")   
 f.write("Avg score: {} \n".format(total_acc / total_ctr)) 
