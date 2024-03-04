@@ -34,8 +34,6 @@ def draw_segmentation(
             return None
         abs_sketch[:,:2] += margin # pads margin px to top and left sides
     
-    print("obj_division", obj_division)
-    print("class_ids", class_ids)
     stroke_cnt, color_cnt = 0, 0
     for i in range(1, abs_sketch.shape[0]):
         if abs_sketch[i-1, -1] > 0.5:
