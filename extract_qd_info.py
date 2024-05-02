@@ -1,14 +1,18 @@
-from utils import sketch
-from tqdm import tqdm
-# from draw_scene import *
-
 import copy
 import numpy as np
 import json
 import os
-    
+import sys
+import random
+import cv2
 
-def get_qd_classes(qd_txt_path="list_quickdraw.txt"):
+from tqdm import tqdm
+sys.path.append('/scratch/users/akutuk21/hpc_run/SketchNet-Tubitak-Project/')
+from sknet.utils.visualize_utils import draw_sketch
+from sknet.utils.sketch_utils import *
+
+
+def get_qd_classes(qd_txt_path="qd_coco_files/list_quickdraw.txt"):
     classes = []
     with open(qd_txt_path, "r") as f:
         lines = f.readlines()
@@ -59,61 +63,60 @@ def read_quickdraw_npz(filepath: str, partition: str=None, idx=None):
         return tr, val, test
 
 
-def extract_quickdraw_wh_ratio(data_path, save_path, set_type):
-
-    obj_classes = get_qd_classes()
+def extract_quickdraw_wh_ratio(data_path, save_path, set_type, sample_cnt=1000):
     
+    save_path = os.path.join(save_path, set_type)
+    if not os.path.isdir(save_path):
+        os.mkdir(save_path)
+    
+    sketches_path = os.path.join(save_path, "sketches")
+    if not os.path.isdir(sketches_path):
+        os.mkdir(sketches_path)
+                
+    ratios_folder = os.path.join(save_path, "wh_ratios")
+    if not os.path.isdir(ratios_folder):
+        os.mkdir(ratios_folder)
+                
     for file_name in tqdm(os.listdir(data_path)):
         if "npz" not in file_name:
             continue
 
         npz_name = file_name.split(".")[0]
-        data = []
-        
-        folder_path = os.path.join(save_path, set_type)
-        if not os.path.isdir(folder_path):
-            os.mkdir(folder_path)
-        
-        folder_path = os.path.join(folder_path, npz_name)
-        if not os.path.isdir(folder_path):
-            os.mkdir(folder_path)
-            
         qd_data = read_quickdraw_npz(os.path.join(data_path, npz_name + ".npz"), partition=set_type, idx=None)
+        n_samples = len(qd_data)
+        rand_ids = random.sample(np.arange(0, n_samples-1).tolist(), sample_cnt)
         
-        for i in tqdm(range(0, len(qd_data))):
+        ratios_data = {}
+        
+        for idx in tqdm(rand_ids):
                 
-            sketch = np.asarray(qd_data[i])
+            sketch = np.asarray(qd_data[idx])
+            
+            npz_path = os.path.join(sketches_path, npz_name)
+            if not os.path.isdir(npz_path):
+                os.mkdir(npz_path)
+                
+            save_name = npz_name + '_' + str(idx)
+            np.save(os.path.join(npz_path, save_name + '.npy'), sketch)
+            
             sketch_temp = copy.deepcopy(sketch)
             sketch_temp = apply_RDP(sketch_temp)
             sketch_temp = normalize(sketch_temp)
-            min_x, min_y, max_x, max_y = get_relative_bounds_customized(sketch_temp)
+            min_x, min_y, max_x, max_y = get_relative_bounds(sketch_temp)
             w = max_x - min_x
             h = max_y - min_y
             
             if h == 0.:
-                data.append(0.)
+                ratios_data[save_name] = 0.
             else:
-                data.append(w/h)
+                ratios_data[save_name] = w/h
         
-        data = np.asarray(data)
-        
-        npy_path = os.path.join(folder_path, 'ratios.npy')
-        np.save(npy_path, data)
-        
-        f = open(f"log_files/extract_ratios.txt", "a")
-        f.write("{} done. \n".format(npz_name))
-        f.close()
-    
-        # data = np.load(npy_path)
-
-    f = open(f"log_files/extract_ratios.txt", "a")                             
-    f.write("\n {} DONEEEEE! \n".format(set_type))
-    f.write("###############################################")
-    f.close()    
+        with open(os.path.join(ratios_folder, npz_name + ".json"), "w") as f:
+            json.dump(ratios_data, f)  
 
 
 data_path = "/datasets/quickdraw/sketchrnn/npz/"
 save_path = "qd_ratios"
+set_type = "train"
 
-set_type = "test"
 extract_quickdraw_wh_ratio(data_path, save_path, set_type)

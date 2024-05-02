@@ -5,14 +5,20 @@ import json
 import argparse
 import copy
 import random
-import cv2        
+import cv2
+import sys    
+import math  
 
 from PIL import Image
 from tqdm import tqdm
-from utils.sketch import *
 from utils.hparams import *
-from draw_scene import *
-from generate_scene import *
+
+sys.path.append('/userfiles/akutuk21') 
+from Sketchformer.sketchformer_api import *
+
+sys.path.append('/scratch/users/akutuk21/hpc_run/SketchNet-Tubitak-Project/')
+from sknet.utils.visualize_utils import draw_sketch
+from sknet.utils.sketch_utils import *
 
 #########################################################
 
@@ -25,7 +31,7 @@ def default_hparams():
         max_objects_per_image=5,
         max_objects_per_category=3,
         min_category_per_image=3,
-        save_embeds=False,
+        save_embeds=True,
         margin = 10,
         scale_factor=255.0
     )
@@ -34,14 +40,14 @@ def default_hparams():
 
 def make_coords_img(coords, scene_size):
 
-    raster_coords = np.zeros((len(coords), scene_size, scene_size, 1))
+    raster_coords = np.zeros((len(coords), scene_size, scene_size, 3))
     
     xmax, ymax = coords[0, 2:]
     w = math.ceil(xmax)
     h = math.ceil(ymax)
            
     for i, bbox in enumerate(coords):
-        img = np.full((scene_size, scene_size, 1), 0, dtype=np.uint8)
+        img = np.full((scene_size, scene_size, 3), 0, dtype=np.uint8)
         img[0:h, 0:w, ...] = 127.
         xmin, ymin = bbox[:2]
         xmax, ymax = bbox[2:]
@@ -69,6 +75,9 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
     
     image_counter = 0
     
+    if hps["save_embeds"]:
+        model = get_model()
+        
     sketches_dir = os.path.join(save_pth, 'sketches')
     if not os.path.isdir(sketches_dir):
         os.mkdir(sketches_dir)
@@ -80,6 +89,10 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
     vectors_dir = os.path.join(save_pth, 'vectors')
     if not os.path.isdir(vectors_dir):
         os.mkdir(vectors_dir)
+        
+    scenes_dir = os.path.join(save_pth, 'scenes')
+    if not os.path.isdir(scenes_dir):
+        os.mkdir(scenes_dir)
     
     res_dict = {"data": []}
       
@@ -103,8 +116,9 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
                     continue
             
                 obj_names, obj_ids = read_object_order(os.path.join(inst_dir, "position_str.txt"))
-                
+                    
                 sketch_bboxes, sketches = [], []
+                scene_sketch = []
                 
                 for i in range(0, len(obj_ids)):
                     obj = read_sketch_object(os.path.join(inst_dir, f"sketch_{i}.pts"))
@@ -123,7 +137,8 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
                         obj = apply_RDP(obj, is_absolute=True)
                         obj = normalize_to_scale(obj, is_absolute=True, scale_factor=max_len)
                         obj = obj.tolist()
-                        
+                    
+                    scene_sketch.extend(obj)
                     sketches.append(obj)
                     sketch_bboxes.append([xmin, ymin, xmax, ymax])
                 
@@ -132,11 +147,11 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
                 
                 orig_coords = copy.deepcopy(sketch_bboxes)
                 coords = torch.Tensor(sketch_bboxes)
-                scaled_coords = scale_bboxes(coords, img_w, img_h, hps['scene_size'])
+                scaled_coords = scale_bboxes(coords, img_w, img_h, hps["scene_size"])
                 coords = torch.Tensor(scaled_coords)
                 
                 # Coords will be processed as image
-                raster_coords = make_coords_img(coords, hps['scene_size'])
+                raster_coords = make_coords_img(coords, hps["scene_size"])
                 
                 for idx, class_id in enumerate(obj_ids):
                     qd_class = obj_names[idx]
@@ -150,11 +165,38 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
                     # save sketch image using stroke-3 format
                     
                     sketches_path = os.path.join(sketches_dir, save_name + '.png')
-                    sketch_temp = np.asarray(sketches[idx])
-                    sketches_img = draw_sketch(sketch_temp, sketches_path, is_absolute=True, white_bg=True, max_dim=hps['obj_size'])
-            
+                    sketch_temp = np.asarray(sketches[idx])                    
+                    sketches_img, _ = draw_sketch(copy.deepcopy(sketch_temp),
+                        margin=10,
+                        is_absolute=True,
+                        white_bg=True,
+                        shift=True,
+                        scale_to=hps['obj_size'],
+                        save_path=sketches_path
+                    )
+                    
+                    if hps["save_embeds"]:
+                        min_x, min_y, max_x, max_y = get_absolute_bounds(sketch_temp)
+                        
+                        # align the drawing to the top-left corner, to have minimum values of 0.
+                        sketch_temp[:, 0] -= min_x
+                        sketch_temp[:, 1] -= min_y
+                        
+                        sketch_relative = absolute_to_relative(sketch_temp)
+                        sketch_normalized = normalize(sketch_relative)
+                        
+                        object_embeds, predicted, class_scores = retrieve_embedding_and_classes_from_batch(model, [sketch_normalized])
+                        object_embeds = object_embeds.tolist()
+                        class_scores = class_scores.numpy().tolist()
+                        
+                    else:
+                        object_embeds = None
+                        class_scores = None
+                        predicted = None
+                    
                     vector_path = os.path.join(vectors_dir, save_name + '.json')
-                    vector_dict = {"img_w": img_w, "img_h": img_h, "coord": orig_coords[idx+1].tolist(), "stroke": sketch_temp.tolist()}
+                    vector_dict = {"img_w": img_w, "img_h": img_h, "coord": orig_coords[idx+1].tolist(), "stroke": sketch_temp.tolist(), "class_id": class_id,
+                                   "object_embeds": object_embeds, "class_scores": class_scores, "predicted": predicted}
             
                     with open(vector_path, "w") as f:
                         json.dump(vector_dict, f)
@@ -167,6 +209,20 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=True):
                         "images_path": os.path.join('images', save_name + '.png'),
                         "sketches_path": os.path.join('sketches', save_name + '.png')
                     })
+                    
+                # save scene sketch
+                scene_sketch = np.asarray(scene_sketch)
+    
+                img_path = os.path.join(scenes_dir, str(inst) + '.png')
+                scene_size = max(img_h, img_w)
+                raster_scene, _ = draw_sketch(copy.deepcopy(scene_sketch),
+                    margin=10,
+                    is_absolute=True,
+                    white_bg=True,
+                    shift=True,
+                    scale_to=scene_size,
+                    save_path=img_path
+                )
                 
                 image_counter += 1
                 
@@ -226,7 +282,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Prepare CBSC dataset for the network')
     parser.add_argument('--dataset-dir', default='/userfiles/akutuk21/CBSC_Data')
-    parser.add_argument('--target-dir', default='cbsc-sketches')
+    parser.add_argument('--target-dir', default='../Datasets/CBSC-FULL')
     parser.add_argument('--hparams', type=str)
 
     args = parser.parse_args()

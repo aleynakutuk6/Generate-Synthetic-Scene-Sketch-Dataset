@@ -8,14 +8,15 @@ import random
 import sys         
 
 from PIL import Image
-from tqdm import tqdm
-from utils.sketch import *
 from utils.hparams import *
-from draw_scene import *
-from generate_scene import *
 
 sys.path.append('/userfiles/akutuk21') 
 from Sketchformer.sketchformer_api import *
+
+sys.path.append('/scratch/users/akutuk21/hpc_run/SketchNet-Tubitak-Project/')
+from sknet.utils.visualize_utils import draw_sketch
+from sknet.utils.sketch_utils import relative_to_absolute, get_absolute_bounds, normalize_to_scale, absolute_to_relative
+from tqdm import tqdm
 
 #########################################################
 
@@ -73,7 +74,7 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=False, rdp_per_scene=Fal
                     X_test = []
                 
                 sketch_bboxes = []
-                raster_sketches = np.zeros((len(obj_ids), hps['obj_size'], hps['obj_size'], 1))
+                raster_sketches = np.zeros((len(obj_ids), hps['obj_size'], hps['obj_size'], 3))
                 sketch, sketch_divisions = [], [0]
                 for i in range(0, len(obj_ids)):
                     obj = read_sketch_object(os.path.join(inst_dir, f"sketch_{i}.pts"))
@@ -101,7 +102,14 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=False, rdp_per_scene=Fal
                     img_path = os.path.join(save_dir, f'{str(i+1)}_{obj_names[i]}.png')
                     
                     sketch_temp = np.asarray(obj)
-                    raster_sketches[i] = draw_sketch(sketch_temp, img_path, is_absolute=True, white_bg=True, max_dim=hps['obj_size'])
+                    raster_sketches[i], _ = draw_sketch(copy.deepcopy(sketch_temp),
+                        margin=10,
+                        is_absolute=True,
+                        white_bg=True,
+                        shift=True,
+                        scale_to=hps['obj_size'],
+                        save_path=img_path
+                    )
             
                     if hps["save_embeds"]:
                         min_x, min_y, max_x, max_y = get_absolute_bounds(sketch_temp)
@@ -138,7 +146,14 @@ def load_CBSC_data(root_pth, save_pth, hps, rdp_per_obj=False, rdp_per_scene=Fal
                 scene_strokes = sketch
                 img_path = os.path.join(save_dir, "0_scene.png")
                 scene_size = max(img_h, img_w)
-                raster_scene = draw_sketch(copy.deepcopy(scene_strokes), img_path, is_absolute=True, white_bg=True, keep_size=True, max_dim=scene_size)
+                raster_scene, _ = draw_sketch(copy.deepcopy(scene_strokes),
+                    margin=10,
+                    is_absolute=True,
+                    white_bg=True,
+                    shift=True,
+                    scale_to=scene_size,
+                    save_path=img_path
+                )
                 
                 sketch_bboxes = np.asarray(sketch_bboxes)
                 sketch_bboxes = np.insert(sketch_bboxes, 0, [0.0, 0.0, img_w, img_h], axis=0)
@@ -221,7 +236,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Prepare CBSC dataset for the network')
     parser.add_argument('--dataset-dir', default='/userfiles/akutuk21/CBSC_Data')
-    parser.add_argument('--target-dir', default='CBSC-processed-new')
+    parser.add_argument('--target-dir', default='../Datasets/CBSC-FULL')
     parser.add_argument('--hparams', type=str)
 
     args = parser.parse_args()
@@ -243,8 +258,8 @@ def main():
         hps = hps.parse(args.hparams)
     hps = dict(hps.values())
         
-    # test_n_samples = load_CBSC_data(os.path.join(args.dataset_dir, "test"), test_basename, hps, rdp_per_obj=True)
-    # print("Saved {} images for test set".format(test_n_samples))
+    test_n_samples = load_CBSC_data(os.path.join(args.dataset_dir, "test"), test_basename, hps, rdp_per_obj=True)
+    print("Saved {} images for test set".format(test_n_samples))
     
     valid_n_samples = load_CBSC_data(os.path.join(args.dataset_dir, "validation"), valid_basename, hps, rdp_per_obj=True)
     print("Saved {} images for validation set".format(valid_n_samples))
