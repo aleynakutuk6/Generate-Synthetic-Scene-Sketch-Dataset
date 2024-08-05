@@ -31,7 +31,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint=tesla_t4 
 #SBATCH --time=120:00:00 
-#SBATCH --output=log_files/data-extraction.log
+#SBATCH --output=data-extraction-qd.log
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=akutuk21@ku.edu.tr
 
@@ -43,13 +43,13 @@
 # Load Anaconda
 echo "=======================" 
 echo "Loading Anaconda Module..." 
-module add cuda/11.0
-module add cudnn/8.2.0/cuda-11.X
+module unload cuda
+module unload cudnn
+module add cuda/10.2
+module add cudnn/7.6.5/cuda-10.2
 module load anaconda/5.2.0 
 module add nnpack/latest 
 module add rclone 
-
-source activate sketchformer-new
 
 # Set stack size to unlimited
 echo "Setting stack size to unlimited..." 
@@ -62,4 +62,6 @@ echo
 ##################### !!! DO NOT EDIT ABOVE THIS LINE !!! ######################
 ################################################################################
 
-python3 save_cbsc.py
+source activate pysgg-new
+
+python3 extract_qd_info.py

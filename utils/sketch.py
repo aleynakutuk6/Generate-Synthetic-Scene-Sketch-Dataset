@@ -224,3 +224,26 @@ def lines_to_strokes(lines):
     strokes = np.array(strokes)
     strokes[1:, 0:2] -= strokes[:-1, 0:2]
     return strokes[1:, :]
+    
+
+def read_npy(filepath: str):
+    
+    if not os.path.isfile(filepath):
+        raise ValueError(f"No NPY file exists in: {filepath}")
+    
+    sk = np.load(filepath, allow_pickle=True, encoding="bytes")
+    
+    def clean_sketch(sketch: np.ndarray) -> np.ndarray:
+        sk_new = sketch.astype(float)
+        if sk_new[0, -1] == 1:
+            sk_new = sk_new[1:, :]
+        
+        end_checks = sk_new[1:, -1] + sk_new[:-1, -1]
+        vals = np.where(end_checks > 1)[0]
+        if vals.shape[0] > 0:
+            for j in np.flip(vals):
+                sk_new = np.delete(sk_new, j+1, axis=0)
+        
+        return sk_new
+
+    return clean_sketch(sk)

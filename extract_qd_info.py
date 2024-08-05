@@ -63,7 +63,7 @@ def read_quickdraw_npz(filepath: str, partition: str=None, idx=None):
         return tr, val, test
 
 
-def extract_quickdraw_wh_ratio(data_path, save_path, set_type, sample_cnt=1000):
+def extract_quickdraw_wh_ratio(data_path, save_path, set_type, sample_cnt=5000):
     
     save_path = os.path.join(save_path, set_type)
     if not os.path.isdir(save_path):
@@ -82,12 +82,18 @@ def extract_quickdraw_wh_ratio(data_path, save_path, set_type, sample_cnt=1000):
             continue
 
         npz_name = file_name.split(".")[0]
+        
+        if os.path.exists(os.path.join(sketches_path, npz_name)) and os.path.exists(os.path.join(ratios_folder, npz_name + ".json")):
+            if len(os.listdir(os.path.join(sketches_path, npz_name))) == sample_cnt:
+                print("Passed npz: {}".format(npz_name))
+                continue
+                
+        print("Processing npz: {}".format(npz_name))
         qd_data = read_quickdraw_npz(os.path.join(data_path, npz_name + ".npz"), partition=set_type, idx=None)
         n_samples = len(qd_data)
         rand_ids = random.sample(np.arange(0, n_samples-1).tolist(), sample_cnt)
         
         ratios_data = {}
-        
         for idx in tqdm(rand_ids):
                 
             sketch = np.asarray(qd_data[idx])
@@ -116,7 +122,7 @@ def extract_quickdraw_wh_ratio(data_path, save_path, set_type, sample_cnt=1000):
 
 
 data_path = "/datasets/quickdraw/sketchrnn/npz/"
-save_path = "qd_ratios"
+save_path = "/scratch/users/akutuk21/hpc_run/Sketch-Graph-Network/datasets/ratios/qd"
 set_type = "train"
 
 extract_quickdraw_wh_ratio(data_path, save_path, set_type)
